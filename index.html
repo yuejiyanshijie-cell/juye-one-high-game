@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>巨野一中：丧尸围城</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes typewriter { from { width: 0; } to { width: 100%; } }
+@keyframes shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+@keyframes pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+@keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+@keyframes glitch { 0% { text-shadow: 2px 0 red, -2px 0 cyan; } 25% { text-shadow: -2px 0 red, 2px 0 cyan; } 50% { text-shadow: 1px 0 red, -1px 0 cyan; } 75% { text-shadow: -1px 0 red, 1px 0 cyan; } }
+body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #0a0a0a; color: #e0e0e0; overflow: hidden; height: 100vh; user-select: none; }
+#game { width: 100%; height: 100vh; position: relative; overflow: hidden; }
+
+/* Background layers */
+#bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transition: background 1.5s ease; z-index: 0; }
+#bg-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; transition: opacity 2s; }
+.bg-classroom { background: linear-gradient(135deg, #2d2d3a 0%, #1a1a2e 50%, #16213e 100%); }
+.bg-outbreak { background: linear-gradient(135deg, #1a0000 0%, #2d0000 50%, #0a0a0a 100%); }
+.bg-night { background: linear-gradient(180deg, #0a0a1a 0%, #1a1a3a 50%, #0d0d1a 100%); }
+.bg-tunnel { background: linear-gradient(90deg, #0a0a0a 0%, #1a1a1a 50%, #0a0a0a 100%); }
+.bg-street { background: linear-gradient(135deg, #1a1a2e 0%, #2d2d3a 50%, #3a3a4a 100%); }
+.bg-lab { background: linear-gradient(135deg, #0a1a2a 0%, #1a2a3a 50%, #0a1a2a 100%); }
+.bg-military { background: linear-gradient(135deg, #1a2a1a 0%, #2a3a2a 50%, #1a2a1a 100%); }
+.bg-dawn { background: linear-gradient(180deg, #1a0a00 0%, #3a2a1a 30%, #5a4a3a 60%, #8a7a6a 100%); }
+.bg-epilogue { background: linear-gradient(180deg, #0a0a2a 0%, #1a1a4a 30%, #2a2a5a 60%, #0a0a2a 100%); }
+.bg-corridor { background: linear-gradient(90deg, #1a0a00 0%, #2d1a0a 50%, #1a0a00 100%); }
+
+/* Dark overlay effects */
+.overlay-panic { background: rgba(200,0,0,0.15); }
+.overlay-dark { background: rgba(0,0,0,0.6); }
+.overlay-light { background: rgba(255,200,150,0.1); }
+
+/* Characters area */
+#characters { position: absolute; bottom: 200px; left: 0; width: 100%; height: 55%; z-index: 2; display: flex; justify-content: center; align-items: flex-end; pointer-events: none; }
+.char-sprite { position: relative; margin: 0 -20px; transition: all 0.8s cubic-bezier(0.4,0,0.2,1); pointer-events: none; }
+.char-sprite img { width: 130px; height: 130px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255,255,255,0.3); box-shadow: 0 0 30px rgba(255,255,255,0.1); transition: all 0.5s; }
+.char-sprite .placeholder { width: 130px; height: 130px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 48px; font-weight: bold; color: #fff; border: 3px solid rgba(255,255,255,0.3); box-shadow: 0 0 30px rgba(255,255,255,0.1); text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+.char-sprite .char-label { text-align: center; margin-top: 8px; font-size: 14px; color: rgba(255,255,255,0.8); text-shadow: 0 2px 8px rgba(0,0,0,0.8); letter-spacing: 2px; }
+.char-sprite.left { transform: translateX(-80px); }
+.char-sprite.right { transform: translateX(80px); }
+.char-sprite.center { transform: translateX(0) scale(1); }
+.char-sprite.hidden { opacity: 0; transform: translateY(50px) scale(0.8); pointer-events: none; }
+.char-sprite.speaking .placeholder { border-color: #ffd700; box-shadow: 0 0 40px rgba(255,215,0,0.4); animation: float 2s ease-in-out infinite; }
+.char-sprite.speaking .char-label { color: #ffd700; }
+
+/* Dialogue box */
+#dialogue-box { position: absolute; bottom: 0; left: 0; width: 100%; z-index: 10; background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.92) 15%, rgba(0,0,0,0.95) 100%); padding: 20px 40px 30px; transition: all 0.5s; min-height: 220px; }
+#dialogue-box.hidden { transform: translateY(100%); opacity: 0; }
+#speaker-name { font-size: 18px; font-weight: bold; color: #ffd700; margin-bottom: 8px; letter-spacing: 2px; text-shadow: 0 0 20px rgba(255,215,0,0.3); }
+#speaker-name.narrator { color: #88ccff; }
+#speaker-name.system { color: #88ff88; }
+#dialogue-text { font-size: 20px; line-height: 1.8; color: #f0f0f0; min-height: 80px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); letter-spacing: 1px; }
+#dialogue-text .cursor { display: inline-block; width: 2px; height: 24px; background: #ffd700; margin-left: 2px; animation: pulse 0.8s infinite; vertical-align: text-bottom; }
+#click-hint { position: absolute; right: 50px; bottom: 15px; color: rgba(255,255,255,0.4); font-size: 14px; animation: pulse 1.5s infinite; }
+
+/* Choices */
+#choices { position: absolute; bottom: 280px; left: 50%; transform: translateX(-50%); z-index: 15; width: 80%; max-width: 700px; display: none; }
+#choices.show { display: block; }
+.choice-btn { display: block; width: 100%; padding: 16px 24px; margin-bottom: 12px; background: rgba(255,255,255,0.08); border: 2px solid rgba(255,255,255,0.2); color: #f0f0f0; font-size: 18px; font-family: inherit; border-radius: 8px; cursor: pointer; transition: all 0.3s; text-align: left; animation: slideUp 0.5s ease forwards; opacity: 0; }
+.choice-btn:hover { background: rgba(255,215,0,0.15); border-color: #ffd700; color: #ffd700; transform: translateX(10px); }
+.choice-btn:nth-child(1) { animation-delay: 0.1s; }
+.choice-btn:nth-child(2) { animation-delay: 0.2s; }
+.choice-btn:nth-child(3) { animation-delay: 0.3s; }
+
+/* Title screen */
+#title-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(180deg, #0a0000 0%, #1a0000 40%, #0a0a1a 80%, #000 100%); }
+#title-screen.hidden { display: none; }
+#title-screen h1 { font-size: 56px; font-weight: 900; color: #cc0000; text-shadow: 0 0 40px rgba(200,0,0,0.5), 0 4px 8px rgba(0,0,0,0.8); letter-spacing: 12px; margin-bottom: 10px; animation: glitch 3s infinite; }
+#title-screen .subtitle { font-size: 22px; color: rgba(255,255,255,0.6); letter-spacing: 6px; margin-bottom: 60px; }
+#title-screen .credit { font-size: 16px; color: rgba(255,255,255,0.3); margin-bottom: 40px; letter-spacing: 3px; }
+#start-btn { padding: 18px 60px; font-size: 22px; font-family: inherit; background: transparent; border: 2px solid rgba(200,0,0,0.6); color: #cc0000; letter-spacing: 6px; cursor: pointer; transition: all 0.5s; border-radius: 4px; }
+#start-btn:hover { background: rgba(200,0,0,0.15); border-color: #cc0000; box-shadow: 0 0 30px rgba(200,0,0,0.3); transform: scale(1.05); }
+.char-select { margin-bottom: 40px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.char-select-item { width: 70px; height: 70px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: bold; color: #fff; border: 2px solid rgba(255,255,255,0.2); cursor: pointer; transition: all 0.3s; }
+.char-select-item:hover { transform: scale(1.15); border-color: #ffd700; }
+
+/* Name input */
+#name-input-area { margin-bottom: 30px; text-align: center; }
+#name-input-area label { display: block; color: rgba(255,255,255,0.6); font-size: 16px; margin-bottom: 12px; letter-spacing: 2px; }
+#player-name-input { padding: 10px 20px; font-size: 18px; font-family: inherit; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 4px; text-align: center; width: 200px; outline: none; transition: border-color 0.3s; }
+#player-name-input:focus { border-color: #ffd700; }
+
+/* Chapter title */
+#chapter-title { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.9); opacity: 0; transition: opacity 1s; pointer-events: none; }
+#chapter-title.show { opacity: 1; pointer-events: auto; }
+#chapter-title .num { font-size: 18px; color: rgba(255,215,0,0.5); letter-spacing: 8px; margin-bottom: 16px; }
+#chapter-title .name { font-size: 48px; color: #ffd700; letter-spacing: 10px; text-shadow: 0 0 30px rgba(255,215,0,0.3); }
+#chapter-title .desc { font-size: 16px; color: rgba(255,255,255,0.4); margin-top: 20px; letter-spacing: 3px; }
+
+/* Scene transition */
+#transition { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 25; background: #000; opacity: 0; transition: opacity 0.8s; pointer-events: none; }
+#transition.active { opacity: 1; }
+
+/* Quick menu */
+#quick-menu { position: absolute; top: 15px; right: 20px; z-index: 20; display: none; }
+#quick-menu.show { display: flex; gap: 12px; }
+.menu-btn { width: 40px; height: 40px; border-radius: 50%; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.15); color: rgba(255,255,255,0.6); font-size: 16px; cursor: pointer; transition: all 0.3s; display: flex; align-items: center; justify-content: center; }
+.menu-btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.3); color: #fff; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  #title-screen h1 { font-size: 32px; letter-spacing: 6px; }
+  #title-screen .subtitle { font-size: 16px; }
+  .char-sprite .placeholder, .char-sprite img { width: 90px; height: 90px; font-size: 32px; }
+  .char-sprite { margin: 0 -10px; }
+  #dialogue-box { padding: 15px 20px 25px; min-height: 180px; }
+  #dialogue-text { font-size: 16px; }
+  #speaker-name { font-size: 15px; }
+  #chapter-title .name { font-size: 28px; }
+  #choices { bottom: 240px; width: 90%; }
+  .choice-btn { font-size: 15px; padding: 12px 16px; }
+  #quick-menu { top: 10px; right: 10px; }
+  .char-select-item { width: 50px; height: 50px; font-size: 16px; }
+}
+
+/* Blood drip on screen edges */
+.blood-effect { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; opacity: 0; transition: opacity 2s; background: radial-gradient(ellipse at 20% 30%, rgba(100,0,0,0.15) 0%, transparent 50%), radial-gradient(ellipse at 80% 20%, rgba(100,0,0,0.1) 0%, transparent 40%); }
+.blood-effect.active { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="game">
+
+<!-- Title Screen -->
+<div id="title-screen">
+  <h1>巨野一中</h1>
+  <div class="subtitle">—— 丧尸围城 ——</div>
+  <div class="credit">根据真实小说改编</div>
+  <div id="name-input-area">
+    <label>请输入你的名字</label>
+    <input type="text" id="player-name-input" placeholder="输入姓名..." maxlength="6">
+  </div>
+  <div class="char-select" id="char-preview"></div>
+  <button id="start-btn">开 始 游 戏</button>
+</div>
+
+<!-- Chapter title -->
+<div id="chapter-title">
+  <div class="num"></div>
+  <div class="name"></div>
+  <div class="desc"></div>
+</div>
+
+<!-- Transition -->
+<div id="transition"></div>
+
+<!-- Background -->
+<div id="bg" class="bg-classroom"></div>
+<div id="bg-overlay" class="overlay-dark"></div>
+<div class="blood-effect" id="blood-effect"></div>
+
+<!-- Characters -->
+<div id="characters"></div>
+
+<!-- Choices -->
+<div id="choices"></div>
+
+<!-- Dialogue -->
+<div id="dialogue-box">
+  <div id="speaker-name"></div>
+  <div id="dialogue-text"></div>
+  <div id="click-hint">点击继续 ▸</div>
+</div>
+
+<!-- Quick menu -->
+<div id="quick-menu" class="show">
+  <button class="menu-btn" onclick="toggleSaveLoad()" title="存档/读档">☰</button>
+</div>
+
+<!-- Save/Load Modal -->
+<div id="save-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:100;background:rgba(0,0,0,0.85);justify-content:center;align-items:center;" onclick="if(event.target===this)this.style.display='none'">
+  <div style="background:rgba(30,30,40,0.95);padding:30px;border-radius:12px;border:1px solid rgba(255,255,255,0.1);max-width:500px;width:90%;max-height:80vh;overflow-y:auto;">
+    <h3 style="color:#ffd700;margin-bottom:20px;text-align:center;letter-spacing:4px;">存 档 / 读 档</h3>
+    <div id="save-slots"></div>
+    <button onclick="document.getElementById('save-modal').style.display='none'" style="margin-top:15px;width:100%;padding:10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);color:#aaa;border-radius:6px;cursor:pointer;font-size:14px;">关闭</button>
+  </div>
+</div>
+
+</div>
+
+<script>
+// ============================================================
+// CHARACTER CONFIG - 换头像只需改下面的 img 路径
+// ============================================================
+const CHAR_CFG = {
+  "国好":       { color: "#e74c3c", img: "images/国好（女）.jpg" },
+  "刘欣彤":     { color: "#e67e22", img: "images/刘欣彤（女）.jpg" },
+  "神秘老者":   { color: "#95a5a6", img: "images/神秘老者.jpg" },
+  "数学老师":   { color: "#2c3e50", img: "images/数学老师（男）.jpg" },
+  "王冉":       { color: "#9b59b6", img: "images/王冉（女）.jpg" },
+  "王文轩":     { color: "#2ecc71", img: "images/王文轩（男）.jpg" },
+  "徐光地":     { color: "#3498db", img: "images/徐光地（男）.jpg" },
+  "杨子琪":     { color: "#f39c12", img: "images/杨子琪（男）.jpg" },
+  "张文轩":     { color: "#1abc9c", img: "images/张文轩（男）.jpg" }
+};
+
+// ============================================================
+// GAME STATE
+// ============================================================
+let playerName = "";
+let currentScene = null;
+let currentStep = 0;
+let isTyping = false;
+let typeTimer = null;
+let skipToEnd = false;
+let slideHistory = [];
+let bgmEnabled = false;
+
+const game = {
+  init() {
+    this.buildCharPreview();
+    document.getElementById("start-btn").onclick = () => this.startGame();
+    document.getElementById("player-name-input").onkeydown = (e) => { if(e.key==="Enter") this.startGame(); };
+    document.addEventListener("click", (e) => {
+      if(e.target.closest("#title-screen") || e.target.closest("#save-modal") || e.target.closest("#choices") || e.target.closest("#quick-menu") || e.target.closest("#chapter-title")) return;
+      if(isTyping) { skipToEnd = true; return; }
+      if(document.getElementById("choices").classList.contains("show")) return;
+      this.advance();
+    });
+    document.addEventListener("keydown", (e) => {
+      if(e.key===" "||e.key==="Enter") {
+        e.preventDefault();
+        if(document.getElementById("choices").classList.contains("show")) return;
+        if(isTyping) { skipToEnd = true; return; }
+        this.advance();
+      }
+    });
+  },
+
+  buildCharPreview() {
+    const container = document.getElementById("char-preview");
+    for(const [name, cfg] of Object.entries(CHAR_CFG)) {
+      const d = document.createElement("div");
+      d.className = "char-select-item";
+      d.style.background = cfg.color;
+      d.textContent = name[0];
+      d.title = name;
+      container.appendChild(d);
+    }
+  },
+
+  startGame() {
+    playerName = document.getElementById("player-name-input").value.trim() || "我";
+    document.getElementById("title-screen").classList.add("hidden");
+    document.getElementById("quick-menu").classList.add("show");
+    this.runChapter("prologue");
+  },
+
+  async runChapter(id) {
+    const ch = SCENARIOS[id];
+    if(!ch) return;
+    currentScene = id;
+    currentStep = 0;
+
+    if(ch.title) {
+      const ct = document.getElementById("chapter-title");
+      ct.querySelector(".num").textContent = ch.num || "";
+      ct.querySelector(".name").textContent = ch.title;
+      ct.querySelector(".desc").textContent = ch.desc || "";
+      ct.classList.add("show");
+      await this.sleep(2000);
+      ct.classList.remove("show");
+      await this.sleep(600);
+    }
+
+    await this.transitionOut();
+    this.setBackground(ch.bg || "bg-classroom");
+    this.setOverlay(ch.overlay || "");
+    if(ch.blood) document.getElementById("blood-effect").classList.add("active");
+    else document.getElementById("blood-effect").classList.remove("active");
+    await this.sleep(400);
+    await this.transitionIn();
+
+    this.showDialogueBox(true);
+    this.hideChoices();
+    currentStep = 0;
+    this.renderScene();
+  },
+
+  renderScene() {
+    const ch = SCENARIOS[currentScene];
+    if(!ch || currentStep >= ch.scenes.length) return;
+    const scene = ch.scenes[currentStep];
+
+    if(scene.type === "dialogue") {
+      this.showDialogue(scene);
+    } else if(scene.type === "choice") {
+      this.showChoices(scene);
+    } else if(scene.type === "chapter") {
+      this.runChapter(scene.target);
+    } else if(scene.type === "bg") {
+      this.setBackground(scene.bg);
+      this.setOverlay(scene.overlay || "");
+      if(scene.blood) document.getElementById("blood-effect").classList.add("active");
+      if(scene.blood === false) document.getElementById("blood-effect").classList.remove("active");
+      currentStep++;
+      this.renderScene();
+    }
+  },
+
+  advance() {
+    const ch = SCENARIOS[currentScene];
+    if(!ch) return;
+    currentStep++;
+    if(currentStep >= ch.scenes.length) {
+      this.showDialogueBox(false);
+      this.clearCharacters();
+      return;
+    }
+    this.renderScene();
+  },
+
+  showDialogue(scene) {
+    this.hideChoices();
+    this.clearCharacters();
+
+    const box = document.getElementById("dialogue-box");
+    box.classList.remove("hidden");
+
+    const nameEl = document.getElementById("speaker-name");
+    const textEl = document.getElementById("dialogue-text");
+
+    if(scene.speaker === "叙述") {
+      nameEl.textContent = "——";
+      nameEl.className = "narrator";
+    } else if(scene.speaker === "系统") {
+      nameEl.textContent = "";
+      nameEl.className = "system";
+    } else {
+      nameEl.textContent = scene.speaker;
+      nameEl.className = "";
+    }
+
+    textEl.innerHTML = "";
+
+    // Show character sprite if speaker is a known character
+    if(scene.speaker && scene.speaker !== "叙述" && scene.speaker !== "系统") {
+      this.showCharacter(scene.speaker, scene.pos || "center", scene.expression || "normal");
+    }
+
+    if(scene.extraChars) {
+      for(const c of scene.extraChars) {
+        this.showCharacter(c.name, c.pos || "left", c.expression || "normal");
+      }
+    }
+
+    isTyping = true;
+    skipToEnd = false;
+    this.typeText(textEl, this.replaceVars(scene.text), () => {
+      isTyping = false;
+    });
+  },
+
+  typeText(el, text, cb) {
+    let idx = 0;
+    const speed = 35;
+    el.innerHTML = "";
+
+    if(typeTimer) clearInterval(typeTimer);
+    typeTimer = setInterval(() => {
+      if(skipToEnd) {
+        clearInterval(typeTimer);
+        el.innerHTML = text + '<span class="cursor"></span>';
+        skipToEnd = false;
+        if(cb) cb();
+        return;
+      }
+      if(idx < text.length) {
+        el.innerHTML = text.substring(0, idx + 1) + '<span class="cursor"></span>';
+        idx++;
+      } else {
+        clearInterval(typeTimer);
+        if(cb) cb();
+      }
+    }, speed);
+  },
+
+  showCharacter(name, pos, expr) {
+    const container = document.getElementById("characters");
+    const cfg = CHAR_CFG[name];
+    if(!cfg) return;
+
+    let el = container.querySelector(`[data-char="${name}"]`);
+    if(!el) {
+      el = document.createElement("div");
+      el.className = "char-sprite hidden";
+      el.dataset.char = name;
+
+      if(cfg.img) {
+        const img = document.createElement("img");
+        img.src = cfg.img;
+        img.alt = name;
+        el.appendChild(img);
+      } else {
+        const ph = document.createElement("div");
+        ph.className = "placeholder";
+        ph.style.background = cfg.color;
+        ph.textContent = name[0];
+        el.appendChild(ph);
+      }
+
+      const label = document.createElement("div");
+      label.className = "char-label";
+      label.textContent = name;
+      el.appendChild(label);
+      container.appendChild(el);
+    }
+
+    el.className = "char-sprite " + pos;
+    if(expr === "speak") el.classList.add("speaking");
+    else el.classList.remove("speaking");
+    el.classList.remove("hidden");
+  },
+
+  clearCharacters() {
+    document.getElementById("characters").innerHTML = "";
+  },
+
+  showChoices(scene) {
+    const container = document.getElementById("choices");
+    container.innerHTML = "";
+    container.classList.add("show");
+
+    scene.choices.forEach((c, i) => {
+      const btn = document.createElement("button");
+      btn.className = "choice-btn";
+      btn.textContent = c.text;
+      btn.onclick = () => {
+        container.classList.remove("show");
+        if(c.nextScene) {
+          this.runChapter(c.nextScene);
+        } else if(c.result) {
+          this.showDialogueBox(true);
+          const nameEl = document.getElementById("speaker-name");
+          nameEl.textContent = "系统";
+          nameEl.className = "system";
+          const textEl = document.getElementById("dialogue-text");
+          textEl.innerHTML = "";
+          isTyping = true; skipToEnd = false;
+          this.typeText(textEl, c.result, () => { isTyping = false; });
+          // after showing result, advance normally
+          this._choiceCallback = () => { if(c.targetStep !== undefined) { currentStep = c.targetStep; this.renderScene(); } else { this.advance(); } };
+        } else {
+          this.advance();
+        }
+      };
+      container.appendChild(btn);
+    });
+  },
+
+  hideChoices() {
+    document.getElementById("choices").classList.remove("show");
+  },
+
+  showDialogueBox(show) {
+    document.getElementById("dialogue-box").classList.toggle("hidden", !show);
+  },
+
+  setBackground(cls) {
+    document.getElementById("bg").className = cls;
+  },
+
+  setOverlay(cls) {
+    const ol = document.getElementById("bg-overlay");
+    ol.className = cls;
+  },
+
+  async transitionOut() {
+    const t = document.getElementById("transition");
+    t.classList.add("active");
+    await this.sleep(600);
+  },
+
+  async transitionIn() {
+    const t = document.getElementById("transition");
+    t.classList.remove("active");
+    await this.sleep(400);
+  },
+
+  replaceVars(text) {
+    return text.replace(/\{player\}/g, playerName);
+  },
+
+  sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+};
+
+// ============================================================
+// SAVE / LOAD
+// ============================================================
+function toggleSaveLoad() {
+  const modal = document.getElementById("save-modal");
+  if(modal.style.display !== "flex") {
+    modal.style.display = "flex";
+    renderSaveSlots();
+  } else {
+    modal.style.display = "none";
+  }
+}
+
+function renderSaveSlots() {
+  const container = document.getElementById("save-slots");
+  container.innerHTML = "";
+  for(let i=1; i<=6; i++) {
+    const key = "save_巨野一中_" + i;
+    let data = null;
+    try { data = JSON.parse(localStorage.getItem(key)); } catch(e) {}
+    const div = document.createElement("div");
+    div.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:12px 16px;margin-bottom:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:8px;";
+    const info = document.createElement("div");
+    info.style.cssText = "color:" + (data ? "#e0e0e0" : "#555") + ";font-size:14px;";
+    info.textContent = data ? `存档 ${i} — ${data.chapter || ""} | ${data.time || ""}` : `存档 ${i} — 空`;
+    const btnDiv = document.createElement("div");
+    if(data) {
+      const loadBtn = document.createElement("button");
+      loadBtn.textContent = "读档";
+      loadBtn.style.cssText = "padding:6px 16px;margin-right:8px;background:rgba(255,215,0,0.15);border:1px solid rgba(255,215,0,0.3);color:#ffd700;border-radius:4px;cursor:pointer;font-size:13px;";
+      loadBtn.onclick = () => { loadGame(i); };
+      btnDiv.appendChild(loadBtn);
+    }
+    const saveBtn = document.createElement("button");
+    saveBtn.textContent = data ? "覆盖" : "存档";
+    saveBtn.style.cssText = "padding:6px 16px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#ccc;border-radius:4px;cursor:pointer;font-size:13px;";
+    saveBtn.onclick = () => { saveGame(i); renderSaveSlots(); };
+    btnDiv.appendChild(saveBtn);
+    div.appendChild(info);
+    div.appendChild(btnDiv);
+    container.appendChild(div);
+  }
+}
+
+function saveGame(slot) {
+  const key = "save_巨野一中_" + slot;
+  const ch = SCENARIOS[currentScene];
+  const data = {
+    scene: currentScene,
+    step: currentStep,
+    chapter: ch ? ch.title : "",
+    name: playerName,
+    time: new Date().toLocaleString("zh-CN")
+  };
+  localStorage.setItem(key, JSON.stringify(data));
+}
+
+function loadGame(slot) {
+  const key = "save_巨野一中_" + slot;
+  try {
+    const data = JSON.parse(localStorage.getItem(key));
+    if(data) {
+      playerName = data.name || "我";
+      document.getElementById("save-modal").style.display = "none";
+      if(data.scene) {
+        currentScene = data.scene;
+        currentStep = data.step || 0;
+        game.showDialogueBox(true);
+        game.hideChoices();
+        game.setBackground("bg-classroom");
+        game.renderScene();
+      }
+    }
+  } catch(e) {}
+}
+
+// ============================================================
+// SCENARIOS
+// ============================================================
+const SCENARIOS = {
+  // 序章
+  prologue: {
+    num: "序章",
+    title: "开学日",
+    desc: "二零二五年九月一日·巨野一中",
+    bg: "bg-classroom",
+    scenes: [
+      { type:"dialogue", speaker:"叙述", text:"二零二五年九月一日，开学的第一天。我趴在课桌上，听着班主任在讲台上念着新学期的安排。窗外的蝉鸣聒噪得像一台老旧的电风扇。" },
+      { type:"dialogue", speaker:"叙述", text:"巨野九月的天热得能把人蒸熟，教室里四十多号人挤在一起，空调开了跟没开一样。" },
+      { type:"dialogue", speaker:"数学老师", pos:"center", text:"好了，这学期咱们班转来两位新同学。进来吧。", extraChars:[{name:"王文轩",pos:"left"},{name:"国好",pos:"right"}] },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"大家好，我叫王文轩，从郓城一中转过来的。", extraChars:[{name:"国好",pos:"right"}] },
+      { type:"dialogue", speaker:"叙述", text:"王文轩个头很高，肩膀宽得像一扇门板，黝黑的脸上带着一股不太像高中生的沉稳劲儿。他扫了一眼教室，目光在我旁边的空位上停了一下，径直走过来坐下。" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"谢了。", extraChars:[{name:"国好",pos:"right"}] },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"大家好，我叫国好，原来在济南上学。", extraChars:[{name:"杨子琪",pos:"left"}] },
+      { type:"dialogue", speaker:"叙述", text:"国好个子不高，扎着马尾辫，戴着黑框眼镜，怀里抱着一摞书。她的声音不大但很清楚。" },
+      { type:"dialogue", speaker:"杨子琪", pos:"center", text:"哎，你看那个王文轩，一个人在那做俯卧撑，快两百个了。", extraChars:[{name:"王文轩",pos:"right"}] },
+      { type:"dialogue", speaker:"叙述", text:"我扭头看了一眼，王文轩正光着膀子在跑道上做俯卧撑，背上的肌肉一鼓一鼓的，汗水顺着脊背往下淌。周围几个体育生看得目瞪口呆。" },
+      { type:"dialogue", speaker:"叙述", text:"下午最后一节课快下的时候，忽然听到外面传来一阵尖锐的警报声。不是消防演练那种短促的警报，而是一种拖得很长、很刺耳的声音。" },
+      { type:"dialogue", speaker:"叙述", text:"班主任走到窗边，拉开窗帘——然后僵住了。我看见他的脸色在几秒钟之内变成了惨白。" },
+      { type:"dialogue", speaker:"数学老师", pos:"center", text:"所有人——不要动，不要出声。", textStyle:"warning" },
+      { type:"dialogue", speaker:"叙述", text:"我稍微偏了偏头，从窗帘的缝隙里往外看了一眼。接着我看见了这辈子都忘不了的东西——操场上，一个人正在吃另一个人。" },
+      { type:"dialogue", speaker:"叙述", text:"那个被压在地上的是体育老师。血从脖子那里汩汩地往外冒，染红了一大片草地。而压在他身上的那个人——穿着已经看不出原本颜色的校服，皮肤呈现出一种病态的灰白色，正在埋头啃咬他的喉咙。" },
+      { type:"dialogue", speaker:"叙述", text:"我的胃猛地一缩，差点当场吐出来。" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"丧尸。", extraChars:[{name:"杨子琪",pos:"right"}] },
+      { type:"dialogue", speaker:"杨子琪", pos:"center", text:"你说什么？！" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"丧尸。我在郓城见过。" },
+      { type:"dialogue", speaker:"叙述", text:"教室里炸开了锅。有人尖叫，有人哭喊，有人掏出手机想打电话——但所有人的手机都没有信号。" },
+      { type:"dialogue", speaker:"数学老师", pos:"center", text:"安静！都给我冷静！把门窗锁好，窗帘拉上，谁都不要出去！" },
+      { type:"dialogue", speaker:"叙述", text:"他话音未落，教室的门突然被猛撞了一下。木门发出一声沉闷的巨响，门板向内凸出了一块。" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"桌子！用桌子顶上！", extraChars:[{name:"杨子琪",pos:"right"}] },
+      { type:"dialogue", speaker:"叙述", text:"我反应过来，一把掀翻了自己的课桌，和几个人一起把桌子堆到门口。门外的撞击声一下接着一下，桌上的书本哗啦啦地往下掉。" },
+      { type:"dialogue", speaker:"叙述", text:"撞击声持续了大概五分钟，然后停了。走廊里安静下来，安静得像一座坟墓。" },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"里面有人吗？活的？" },
+      { type:"dialogue", speaker:"叙述", text:"门外站着的确实是国好，她手里的折叠刀上沾着黑色的血。她的眼镜歪在一边，马尾辫散了一半，校服袖子上被撕开了一道口子，露出手臂上三道新鲜的血痕。" },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"楼里都是丧尸，三号楼那边至少有三四十个。操场上有二十多个，围栏外面还有更多。" },
+      { type:"dialogue", speaker:"杨子琪", pos:"center", text:"你怎么知道的？" },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"我从五楼天台看的。" },
+      { type:"dialogue", speaker:"叙述", text:"国好走到讲台边，拿起一支粉笔在黑板上画了个简图——巨野一中的布局：东边教学楼，西边宿舍楼，南边食堂和操场，北边实验楼。大门朝南，但操场上丧尸密度最大，走南门等于送死。" },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"存活人数：四十七人。食物：三天。水源：卫生间水箱。" },
+      { type:"dialogue", speaker:"叙述", text:"教室外面，太阳正在落山。橘红色的光从窗帘缝隙里透进来，在地板上投下一道道血色的条纹。远处传来断断续续的嘶吼声——那声音不像是人能发出来的。末日的第一天，结束了。" },
+      { type:"bg", bg:"bg-night", overlay:"overlay-dark" },
+      { type:"dialogue", speaker:"系统", text:"—— 第一章 · 完 ——" },
+      { type:"chapter", target:"ch1" }
+    ]
+  },
+
+  // 第一章：求生
+  ch1: {
+    num: "第一章",
+    title: "求生",
+    desc: "活下去的规则",
+    bg: "bg-corridor",
+    scenes: [
+      { type:"dialogue", speaker:"叙述", text:"第二天早上五点半，天还没完全亮。我是被冻醒的。教室里挤了四十多个人，门窗紧闭，空气又闷又湿。我被安排在凌晨四点到六点的那一班——跟王文轩一起。" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"外面不太妙。", extraChars:[{name:"国好",pos:"right"}] },
+      { type:"dialogue", speaker:"叙述", text:"操场上黑压压的一片，大概有上百个丧尸，教学楼下漫无目的地游荡。他们的方向都朝着教学楼——朝着我们所在的这栋楼。" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"他们知道我们在里面。他们看不见或视力很差，但听力很好，而且——他们好像能闻到活人的气味。" },
+      { type:"dialogue", speaker:"杨子琪", pos:"center", text:"你在郓城到底经历了什么？" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"两个月前郓城一中就爆发了。全校活下来的七个人。我们躲了一个月，最后解放军来了。但路上翻车了——只有我一个人跑出来了。" },
+      { type:"dialogue", speaker:"叙述", text:"王文轩没有说细节，我只记住了三个原则：第一，不要发出声音。第二，不要单独行动。第三，永远给自己留一条退路。" },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"我们得出去找吃的。食堂、学校物资仓库、还有校门口的超市。" },
+      { type:"dialogue", speaker:"杨子琪", pos:"center", text:"但是操场上全是丧尸。" },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"走教学楼地下通道——有一条废弃的暖气管道通道，连接教学楼和食堂。" },
+      { type:"dialogue", speaker:"数学老师", pos:"center", text:"那条通道早就不用了，封了好多年了。" },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"封了不代表不能拆开。" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"我去。" },
+      { type:"dialogue", speaker:"叙述", text:"最后定了六个人：{player}、王文轩、国好、杨子琪，还有两个体育生——刘欣彤和王冉。" },
+      { type:"dialogue", speaker:"叙述", text:"出发前，王文轩拆了几根拖把，把木棍一端削尖做成简易长矛。国好把折叠刀分给了刘欣彤。王冉在讲台抽屉里找到了一把旧的美工刀。我——没有武器。" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"拿着，活着回来。" },
+      { type:"dialogue", speaker:"叙述", text:"他把一根削尖的拖把棍递给了我。" },
+      // Underground passage
+      { type:"bg", bg:"bg-tunnel", overlay:"overlay-dark" },
+      { type:"dialogue", speaker:"叙述", text:"地下通道的入口在教学楼一楼东侧卫生间后面。一扇锈迹斑斑的铁门被一张已经发黄的封条封着。王文轩举起消防斧，对准锁链砸了下去。" },
+      { type:"dialogue", speaker:"叙述", text:"铁门被打开了，露出了黑洞洞的通道。一股潮湿的、发霉的味道扑面而来。" },
+      { type:"dialogue", speaker:"叙述", text:"我们沿着管道走了大概二十分钟。越走越窄，到后面只能弯腰通过。空气里弥漫着一种说不清的臭味——腐烂的食物混合着铁锈的味道。" },
+      { type:"dialogue", speaker:"叙述", text:"前面有光——是一道铁栅栏天窗。王文轩把铁栅栏撬开，探出头去看了一圈。" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"到食堂了。在后厨的储物间里。" },
+      { type:"bg", bg:"bg-classroom", overlay:"overlay-light" },
+      { type:"dialogue", speaker:"叙述", text:"储物间里堆满了米面粮油。门外传来了声音——有人在。" },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"出来吧，我们是人。" },
+      { type:"dialogue", speaker:"叙述", text:"厨房里藏着两个人：一个穿着厨师服的中年男人，和一个年轻的帮厨。他们躲在洗碗池下面的柜子里，手里握着一把菜刀和一个灭火器。" },
+      { type:"dialogue", speaker:"神秘老者", pos:"center", text:"我姓周，在学校干了十五年了。昨天中午正做饭，突然有人发疯咬人，一切都乱了。" },
+      { type:"dialogue", speaker:"神秘老者", pos:"center", text:"我在广播里收到一个信号，断断续续的。像是有人说——去菏泽，有驻军。" },
+      { type:"dialogue", speaker:"叙述", text:"从巨野到菏泽，四十公里。放在平时开车一小时的事。但现在——外面有成千上万的丧尸，四十公里像隔着一条银河。" },
+      { type:"bg", bg:"bg-night", overlay:"overlay-dark" },
+      { type:"dialogue", speaker:"叙述", text:"那天搬运了七个小时。傍晚六点，我们把所有物资搬进了教学楼二楼的大会议室。教室太小了，四十七个人挤在一起喘不过气。" },
+      { type:"dialogue", speaker:"叙述", text:"王文轩在会议室里挂了一张手写的大字。上面只有三条规则：一、不单独行动。二、不发出噪音。三、不放弃希望。" },
+      { type:"dialogue", speaker:"叙述", text:"晚上，我坐在窗边值夜哨。月光照在操场上，那些丧尸还在游荡，像永远停不下来的影子。我想起了王文轩说的话——永远给自己留一条退路。可是当整个城市都是丧尸的时候，退路在哪里？" },
+      { type:"dialogue", speaker:"系统", text:"—— 第一章 · 完 ——" },
+      { type:"chapter", target:"ch2" }
+    ]
+  },
+
+  // 第二章：信号
+  ch2: {
+    num: "第二章",
+    title: "信号",
+    desc: "来自天元的无线电",
+    bg: "bg-corridor",
+    scenes: [
+      { type:"dialogue", speaker:"叙述", text:"第三天中午，刘欣彤在教学楼五楼的广播室里找到了一台还能用的无线电对讲机。而且——她收到了信号。" },
+      { type:"dialogue", speaker:"刘欣彤", pos:"center", text:"不是噪音！是有人在说话！一个男人的声音——在重复一段话！" },
+      { type:"dialogue", speaker:"叙述", text:"我跟着王文轩和国好跑上五楼，戴上耳机。起初是杂音，但在这片噪音之下，确实有一个声音，沙哑但很清楚——" },
+      { type:"dialogue", speaker:"徐光地", pos:"center", text:"如果有人能听到……记住以下坐标……巨野县东郊……天元生物科技有限公司地下实验室……这里有人……有食物……有水……有安全的地方……" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"天元生物？不是学校后门那条路上那个大工厂？" },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"对。那是个生物科技公司，主要做疫苗研发和生物制剂。去年刚建的。" },
+      { type:"dialogue", speaker:"叙述", text:"会议室里爆发了激烈的争论。有人想去，有人反对。三公里的路，穿越半个县城——这太冒险了。最后投票——二十五票赞成，二十二票反对。" },
+      { type:"dialogue", speaker:"叙述", text:"计划定下来了：派一支五人小队前往天元探查。如果天元安全，再回来接所有人。" },
+      { type:"choice", text:"谁去天元？", choices:[
+        { text:"主动请缨", result:"我站了出来。王文轩也站了出来。国好、王冉、还有老周——五人小队成型了。", nextScene:"ch2_prep" },
+      ]},
+    ]
+  },
+
+  ch2_prep: {
+    title: "准备出发",
+    desc: "出发前夜",
+    bg: "bg-night",
+    scenes: [
+      { type:"dialogue", speaker:"叙述", text:"出发时间定在凌晨四点半。王文轩说，凌晨的气温最低，丧尸的活跃度会明显下降——它们不喜欢黑暗和低温。" },
+      { type:"dialogue", speaker:"叙述", text:"出发前的那个晚上，我做了一个梦。梦见自己还坐在巨野一中的教室里，阳光从窗户照进来。然后什么东西在窗外撞了一下玻璃——一张灰白色的、眼睛浑浊的脸贴在窗户上。" },
+      { type:"dialogue", speaker:"叙述", text:"我猛地惊醒了。四周一片漆黑。会议室里弥漫着几十个人的呼吸声。" },
+      { type:"bg", bg:"bg-corridor", overlay:"overlay-dark" },
+      { type:"dialogue", speaker:"叙述", text:"四点十五分，我们在会议室门口集合。王文轩背着一个大登山包——干粮、水、急救包、绳子、消防斧。国好带了无线电对讲机、手术剪和打火机。王冉带了一把菜刀和一根擀面杖。老周背了一个麻袋。" },
+      { type:"dialogue", speaker:"叙述", text:"我没有什么值钱的东西：一把削尖的拖把棍、一瓶水、两条巧克力、一包创可贴。" },
+      { type:"dialogue", speaker:"数学老师", pos:"center", text:"活着回来。" },
+      { type:"dialogue", speaker:"叙述", text:"后来我才知道——那是我们最后一次见到数学老师。" },
+      { type:"bg", bg:"bg-street", overlay:"overlay-dark" },
+      { type:"dialogue", speaker:"系统", text:"—— 第二章 · 完 ——" },
+      { type:"chapter", target:"ch3" }
+    ]
+  },
+
+  // 第三章：长街
+  ch3: {
+    num: "第三章",
+    title: "长街",
+    desc: "三公里的死亡之路",
+    bg: "bg-night",
+    scenes: [
+      { type:"dialogue", speaker:"叙述", text:"凌晨四点二十七分。我们从教学楼二楼的东侧窗户翻了出去。沿着围墙的阴影向东摸过去，走到东墙尽头——一扇铁门，垃圾车进出的通道。" },
+      { type:"dialogue", speaker:"神秘老者", pos:"center", text:"我在食堂干了十五年，什么钥匙都有。" },
+      { type:"dialogue", speaker:"叙述", text:"老周从口袋里掏出一把钥匙。铁门被打开了一条缝。我们一个个闪身出去。" },
+      { type:"bg", bg:"bg-street" },
+      { type:"dialogue", speaker:"叙述", text:"巨野的街道在夜色中空旷得可怕。路灯还亮着——电力供应还没有完全崩溃。昏黄的灯光照在空荡荡的马路上，映出一地的碎玻璃和废弃的车辆。空气里弥漫着消毒水和焦糊味。" },
+      { type:"dialogue", speaker:"叙述", text:"我们沿着麟山路向南走。走了大概十分钟——前面出现了一辆横在路中间的公交车。公交车上，有人在动。" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"他们闻到我们了——跑！" },
+      { type:"dialogue", speaker:"叙述", text:"我们撒腿就跑。身后的脚步声瞬间密集起来。三具丧尸以完全违背人体力学的姿势在追我们——膝盖不打弯，身体前倾，双臂前伸。但跑得比正常人慢不了多少。" },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"前面有岔路！左转！" },
+      { type:"dialogue", speaker:"叙述", text:"我们冲进了一条小巷。巷子很窄，两侧都是居民楼的外墙。老周用身份证划开了一栋居民楼的防盗门锁，我们冲了进去。" },
+      { type:"dialogue", speaker:"叙述", text:"门外的撞击声持续了大概五分钟，然后渐渐弱了下去。我们等了半小时——终于安全了。" },
+      { type:"bg", bg:"bg-dawn", overlay:"overlay-light" },
+      { type:"dialogue", speaker:"叙述", text:"天开始蒙蒙亮了。我们继续前进。在前进路上——遇到了一具军人的尸体。穿着迷彩服，旁边扔着一把九五式步枪。" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"会用吗？" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"不会。" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"打开保险，扣扳机就行。但只有在万不得已的时候才用——枪声会引来更多东西。" },
+      { type:"dialogue", speaker:"叙述", text:"我接过枪，手指触碰到冰凉的金属表面，心里涌起一种说不清的感觉。不是安全感，更像是一种沉甸甸的责任——或者说负担。" },
+      // The old man
+      { type:"bg", bg:"bg-dawn" },
+      { type:"dialogue", speaker:"叙述", text:"我们在乡道上走了大概二十分钟，看到了一栋小型农场。院子里坐着一个人——一个老人，在喝茶。" },
+      { type:"dialogue", speaker:"神秘老者", pos:"center", text:"进来喝杯茶？", extraChars:[{name:"神秘老者",pos:"center"}] },
+      { type:"dialogue", speaker:"叙述", text:"老人看起来七十多岁，瘦瘦的，穿着一件洗得发白的蓝色中山装，脸上的皱纹很深，像是刀刻出来的。他的眼神很温和，但也锐利——那种经历过很多事情的锐利。" },
+      { type:"dialogue", speaker:"神秘老者", pos:"center", text:"我叫陈国栋。这个村的村长。不过现在——整个村就剩我一个人了。" },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"您为什么不走？" },
+      { type:"dialogue", speaker:"神秘老者", pos:"center", text:"我在这住了七十三年了。要死，就死在家里吧。" },
+      { type:"dialogue", speaker:"叙述", text:"他给我们做了一碗西红柿鸡蛋面。鸡蛋是自家鸡下的，西红柿是从院子里现摘的。那是我这辈子吃过的最好吃的一碗面。" },
+      { type:"dialogue", speaker:"叙述", text:"临走的时候，陈国栋从口袋里掏出一张叠得整整齐齐的纸，递给了王文轩——到菏泽的小路地图。" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"跟我们一起走吧。" },
+      { type:"dialogue", speaker:"神秘老者", pos:"center", text:"我老了，走不动了。总得有人守着这个家。" },
+      { type:"dialogue", speaker:"叙述", text:"车子发动了。陈国栋站在门口，朝我们挥了挥手。他没有笑也没有哭。车开出很远了，从后视镜里还能看到他的影子——他一直没有回屋。" },
+      { type:"bg", bg:"bg-lab" },
+      { type:"dialogue", speaker:"叙述", text:"早上六点二十分。我们终于看到了天元生物科技有限公司的大门——三米高的巨大铁门，门楣上挂着六个鎏金大字。门前列队站着八个人，穿着白色防护服，全副武装。" },
+      { type:"dialogue", speaker:"徐光地", pos:"center", text:"欢迎来到天元。我叫徐光地——这里的负责人。" },
+      { type:"dialogue", speaker:"系统", text:"—— 第三章 · 完 ——" },
+      { type:"chapter", target:"ch4" }
+    ]
+  },
+
+  // 第四章：天元
+  ch4: {
+    num: "第四章",
+    title: "天元",
+    desc: "地下实验室的真相",
+    bg: "bg-lab",
+    scenes: [
+      { type:"dialogue", speaker:"叙述", text:"天元生物的地下实验室比我想象的更大。徐光地带着我们穿过一个被改造成物资仓库的地下车库，走进了一条长长的、白色灯光照亮的走廊。走廊两侧是一扇扇金属门——P2实验室、P3实验室、低温储藏室。" },
+      { type:"dialogue", speaker:"徐光地", pos:"center", text:"这里是去年才建成的，原本是为了做疫苗研发。" },
+      { type:"bg", bg:"bg-lab", overlay:"overlay-dark" },
+      { type:"dialogue", speaker:"徐光地", pos:"center", text:"原本有七十三个人——研究人员、行政、保安。现在还剩四十二个。" },
+      { type:"dialogue", speaker:"叙述", text:"地下实验室的生活区被改造成了避难所。几张长桌拼成了床铺，墙角堆着成箱的矿泉水和压缩饼干。柴油发电机在角落里嗡嗡作响。燃料还能撑三个月，食物节约点能吃两个月。" },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"然后呢？" },
+      { type:"dialogue", speaker:"徐光地", pos:"center", text:"然后我们要么找到了救援，要么——到时候再说。" },
+      { type:"dialogue", speaker:"叙述", text:"第二天早上七点，徐光地把我们带到了一间会议室。桌上放着一台笔记本电脑和一个无线电台。他沉默了很久，然后把电脑屏幕转向我们。" },
+      { type:"dialogue", speaker:"叙述", text:"屏幕上是一段视频。画面很模糊——手机拍的，在剧烈晃动。街道上挤满了几百个活人——在跑，在尖叫。天空远处有一个巨大的、螺旋状的云团，中心是一种深邃的暗蓝色，像是把天空撕开了一个洞。" },
+      { type:"dialogue", speaker:"徐光地", pos:"center", text:"济南。三天前。" },
+      { type:"dialogue", speaker:"叙述", text:"云团中开始落下灰白色的细小颗粒。接触到那些颗粒的人先是倒下，然后十几秒后——又以一种完全不同的方式站了起来。" },
+      { type:"dialogue", speaker:"徐光地", pos:"center", text:"八月三十号的下午，济南上空出现了那个东西。四个小时后全城沦陷。又过了十二个小时，全省主要城市全部失守。" },
+      { type:"dialogue", speaker:"王冉", pos:"center", text:"那到底是什么？" },
+      { type:"dialogue", speaker:"徐光地", pos:"center", text:"一种未知的真菌样微生物。它破坏了人的大脑前额叶皮层和杏仁核——摧毁了意识、情感、记忆。只保留了最原始的本能——进食、攻击。" },
+      { type:"bg", bg:"bg-lab" },
+      { type:"dialogue", speaker:"徐光地", pos:"center", text:"而且——它在进化。第一天，它们只会根据声音和气味追逐猎物。第二天，开始学会躲避障碍物。第三天——它们开始能够协作。围猎。埋伏。" },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"时间不多了。" },
+      { type:"dialogue", speaker:"徐光地", pos:"center", text:"对。但还有一个消息——菏泽市区有一个军方建立的临时指挥中心。三天前我们收到了一份加密信号——军用卫星通讯频段。" },
+      { type:"dialogue", speaker:"叙述", text:"徐光地从抽屉里拿出了一个手掌大小的银白色金属盒子。" },
+      { type:"dialogue", speaker:"徐光地", pos:"center", text:"这里面——是我们对感染者的分析数据、样本数据、以及——初步的疫苗研究。" },
+      { type:"dialogue", speaker:"叙述", text:"疫苗研究。这几个字像炸弹一样在房间里炸开了。" },
+      { type:"dialogue", speaker:"徐光地", pos:"center", text:"我需要有人带着这个去菏泽，找到那个指挥中心，交给军方。你们是活着从外面走过来的——这本身就证明了你们的能力。" },
+      { type:"choice", text:"接受任务？", choices:[
+        { text:"接受——前往菏泽", result:"'我去。' 我第一个开口。王文轩、国好、王冉、老周——五个人，一个都没少。", nextScene:"ch5" },
+      ]},
+    ]
+  },
+
+  // 第五章：抉择
+  ch5: {
+    num: "第五章",
+    title: "抉择",
+    desc: "四十公里的生死线",
+    bg: "bg-night",
+    scenes: [
+      { type:"bg", bg:"bg-night", overlay:"overlay-dark" },
+      { type:"dialogue", speaker:"叙述", text:"凌晨四点。我们从地下车库开出了一辆黑色的SUV——徐光地的私家车。车窗贴了深色膜，车门内侧焊了钢板。" },
+      { type:"dialogue", speaker:"叙述", text:"车里装满了物资：压缩饼干、矿泉水、急救药品、汽油、卫星电话、GPS定位器。徐光地还给了我们一把锯短了枪管的双管猎枪和一把手枪——老周拿猎枪，王文轩拿手枪。我留着那把九五式。" },
+      { type:"dialogue", speaker:"徐光地", pos:"center", text:"打丧尸最关键的是打头。别的部位打烂了也没用。但跑——永远比打重要。" },
+      { type:"bg", bg:"bg-street" },
+      { type:"dialogue", speaker:"叙述", text:"王文轩开车，国好坐副驾驶拿着地图。我、王冉、老周挤在后排。" },
+      { type:"dialogue", speaker:"叙述", text:"第一次停车在一个加油站。王文轩下车去便利店找物资——然后枪响了。" },
+      { type:"dialogue", speaker:"叙述", text:"他从便利店里冲了出来。身后跟着三四个人——不是丧尸，是活人。端着猎枪。" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"开车！" },
+      { type:"dialogue", speaker:"叙述", text:"从后视镜里，我看到便利店门口站着两个男人，端着猎枪。他们没有追过来——只是车灯下，我看见他们说了一句：这一片是他们的地盘，外人不得进入。" },
+      { type:"dialogue", speaker:"叙述", text:"车里沉默了。我从来没有想过——末日里最可怕的，可能不是丧尸。" },
+      { type:"bg", bg:"bg-dawn" },
+      { type:"dialogue", speaker:"叙述", text:"254省道上堵死了——十几辆汽车连环相撞，车阵里困着很多丧尸。我们拐进了一条乡间小路。两边是荒废的农田、枯死的庄稼——凄凉得让人心慌。" },
+      { type:"dialogue", speaker:"神秘老者", pos:"center", text:"以前这些田里都种着玉米。我小时候，巨野的玉米可好吃了。" },
+      { type:"dialogue", speaker:"叙述", text:"没有人接话。我们继续开车，继续向前。" },
+      { type:"bg", bg:"bg-military" },
+      { type:"dialogue", speaker:"叙述", text:"下午两点左右，我们看到了菏泽市区的边缘。那些高楼——商业大厦、电视塔、牡丹广场——在午后的薄雾中若隐若现。城市看起来完好无损，像是从未发生过什么事。但街上没有活人。" },
+      { type:"dialogue", speaker:"叙述", text:"菏泽市人民武装部大院。围墙，铁丝网，门口堆着沙袋和路障。主楼上飘扬着一面五星红旗。" },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"有国旗——他们还在！" },
+      { type:"dialogue", speaker:"叙述", text:"国好拿起对讲机，接通了频率——" },
+      { type:"dialogue", speaker:"张文轩", pos:"center", text:"你们有多少人？有没有被咬伤或抓伤的？" },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"五个人。没有受伤。" },
+      { type:"dialogue", speaker:"叙述", text:"一分钟后，大门侧面的小门打开了。两个全副武装的军人走了出来——迷彩服、钢盔、九五式步枪。带头的人肩膀上扛着两杠两星——中校。" },
+      { type:"dialogue", speaker:"张文轩", pos:"center", text:"我叫张文轩，菏泽市军分区参谋。欢迎来到我们最后的阵地。" },
+      { type:"bg", bg:"bg-military", overlay:"overlay-light" },
+      { type:"dialogue", speaker:"叙述", text:"我们接受了体检——抽血、测体温、检查皮肤。二十五分钟后，被带回了张文轩的办公室。桌上多了几份热腾腾的盒饭——土豆炖牛肉，还有一个煎蛋。" },
+      { type:"dialogue", speaker:"叙述", text:"国好把那个银白色的金属盒子放在了桌上。张文轩输入了验证码。屏幕闪烁——'数据完整性100%'。" },
+      { type:"dialogue", speaker:"张文轩", pos:"center", text:"好。好啊。现在我来告诉你们真正的情况。" },
+      { type:"dialogue", speaker:"叙述", text:"他打开了全国地图。山东全境——红色。河北大部分——红色。河南北部——红色。江苏北部——红色。还在控制的——四川盆地、云南和贵州部分地区、青藏高原、北京封锁区——通讯已经断了三天了。" },
+      { type:"dialogue", speaker:"张文轩", pos:"center", text:"但是——我们还在。昨天，我们联系上了四川的一个军方研究所。他们说——已经成功分离出了抗体。" },
+      { type:"dialogue", speaker:"叙述", text:"那一刻的安静，被一个炸雷打破了。抗体——初步抗体，动物实验百分之百成功。一百只实验体全部存活，全部产生抗体。" },
+      { type:"dialogue", speaker:"张文轩", pos:"center", text:"现在最重要的是守住这里，守住这份数据。把天元的疫苗研究数据和四川的抗体研究结合起来——我们就有希望。" },
+      { type:"bg", bg:"bg-epilogue" },
+      { type:"dialogue", speaker:"叙述", text:"那天晚上，我联系上了巨野一中。徐光地把卫星电话借给了我。接电话的是杨子琪——他的声音变了，变得沉稳了，不再是那个动不动就发抖的小子了。" },
+      { type:"dialogue", speaker:"杨子琪", pos:"center", text:"我们还在。人少了几个，数学老师为了掩护学生——他走了。但大部分还在。我们守住了。" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"我们很快就来接你们。" },
+      { type:"dialogue", speaker:"杨子琪", pos:"center", text:"好，我们等着。" },
+      { type:"dialogue", speaker:"叙述", text:"挂掉电话之后，我走出帐篷，坐在院子里的一块石头上。菏泽的夜空很清澈，星星密密麻麻地铺满了整个天幕。我不知道这场灾难还要持续多久。不知道还会死多少人。不知道最终会变成怎样。但我知道——只要还有人活着，只要还有人在战斗，只要还有人在——就还有希望。" },
+      { type:"bg", bg:"bg-epilogue", overlay:"overlay-dark" },
+      { type:"dialogue", speaker:"系统", text:"—— 全文完 ——" },
+      { type:"dialogue", speaker:"系统", text:"黑夜之后，会是新的黎明。" },
+    ]
+  }
+};
+
+// ============================================================
+// START
+// ============================================================
+game.init();
+</script>
+</body>
+</html>
