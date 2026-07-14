@@ -106,36 +106,38 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #0
 
 /* Responsive */
 @media (max-width: 768px) {
-  #title-screen h1 { font-size: 32px; letter-spacing: 6px; }
+  #title-screen h1 { font-size: 36px; letter-spacing: 6px; }
   #title-screen .subtitle { font-size: 16px; }
-  .char-sprite .placeholder, .char-sprite img { width: 120px; height: 120px; font-size: 40px; }
-  .char-sprite { margin: 0 -15px; }
-  .char-sprite.left { transform: translateX(-60px); }
-  .char-sprite.right { transform: translateX(60px); }
-  .char-sprite .char-label { font-size: 15px; }
-  #dialogue-box { padding: 20px 24px 28px; min-height: 220px; }
-  #dialogue-text { font-size: 18px; line-height: 1.8; }
-  #speaker-name { font-size: 17px; }
-  #chapter-title .name { font-size: 28px; }
-  #choices { bottom: 250px; width: 92%; }
-  .choice-btn { font-size: 15px; padding: 14px 16px; margin-bottom: 10px; }
+  .char-sprite .placeholder, .char-sprite img { width: 130px; height: 130px; font-size: 44px; }
+  .char-sprite { margin: 0 -18px; }
+  .char-sprite.left { transform: translateX(-70px); }
+  .char-sprite.right { transform: translateX(70px); }
+  .char-sprite .char-label { font-size: 16px; }
+  #dialogue-box { padding: 24px 28px 32px; min-height: 260px; }
+  #dialogue-text { font-size: 20px; line-height: 1.9; }
+  #speaker-name { font-size: 18px; }
+  #chapter-title .name { font-size: 30px; }
+  #choices { bottom: 270px; width: 92%; }
+  .choice-btn { font-size: 16px; padding: 15px 18px; margin-bottom: 11px; }
   #quick-menu { top: 10px; right: 10px; }
   .char-select-item { width: 50px; height: 50px; font-size: 16px; }
-  #click-hint { font-size: 14px; right: 25px; bottom: 12px; }
-  #characters { bottom: 190px; height: 50%; }
+  #click-hint { font-size: 15px; right: 28px; bottom: 14px; }
+  #characters { bottom: 210px; height: 52%; }
   #battle-game-container { display:none; }
 }
 @media (max-width: 480px) {
-  .char-sprite .placeholder, .char-sprite img { width: 90px; height: 90px; font-size: 30px; }
-  .char-sprite { margin: 0 -10px; }
-  .char-sprite.left { transform: translateX(-35px); }
-  .char-sprite.right { transform: translateX(35px); }
-  .char-sprite .char-label { font-size: 12px; }
-  #dialogue-box { min-height: 180px; padding: 14px 14px 22px; }
-  #dialogue-text { font-size: 17px; line-height: 1.7; }
-  #speaker-name { font-size: 15px; }
-  #characters { height: 45%; bottom: 160px; }
-  #click-hint { font-size: 12px; right: 12px; bottom: 8px; }
+  .char-sprite .placeholder, .char-sprite img { width: 115px; height: 115px; font-size: 38px; border-width: 3px; }
+  .char-sprite { margin: 0 -12px; }
+  .char-sprite.left { transform: translateX(-45px); }
+  .char-sprite.right { transform: translateX(45px); }
+  .char-sprite .char-label { font-size: 14px; letter-spacing: 2px; }
+  #dialogue-box { min-height: 230px; padding: 16px 16px 24px; }
+  #dialogue-text { font-size: 19px; line-height: 1.8; }
+  #speaker-name { font-size: 17px; }
+  #characters { height: 50%; bottom: 190px; }
+  #click-hint { font-size: 13px; right: 14px; bottom: 10px; }
+  .choice-btn { font-size: 16px; padding: 15px 16px; }
+  #choices { bottom: 240px; }
 }
 
 /* Blood drip on screen edges */
@@ -336,8 +338,8 @@ const game = {
     let kills = 0, health = startHealth, gameOver = false;
     let zombies = [];
     // Dynamic difficulty: harder = more required kills
-    const diffMult = Math.min(2, 0.6 + req * 0.18);
-    let spawnInterval = Math.max(500, 1400 - req * 100);
+    const diffMult = Math.min(2.5, 0.8 + req * 0.22);
+    let spawnInterval = Math.max(350, 1200 - req * 120);
     let animId = null;
     let lastSpawn = 0;
     let mx, my;
@@ -345,10 +347,10 @@ const game = {
     // Mobile scaling
     const isMobile = window.innerWidth < 768 || 'ontouchstart' in window;
     const scale = Math.min(window.innerWidth, window.innerHeight) / 400;
-    const zombieR = Math.max(14, 18 * scale);
-    const zombieSpeed = Math.max(30, 45 * scale * diffMult);
-    const zombieHP = req >= 7 ? 3 : 2;
-    const damagePerZombie = req >= 6 ? 20 : 15;
+    const zombieR = Math.max(16, 20 * scale);
+    const zombieSpeed = Math.max(40, 55 * scale * diffMult);
+    const zombieHP = req >= 7 ? 4 : (req >= 5 ? 3 : 2);
+    const damagePerZombie = req >= 5 ? 25 : 20;
 
     const ov = document.createElement("div");
     ov.id = "minigame";
