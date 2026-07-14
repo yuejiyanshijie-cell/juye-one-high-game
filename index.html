@@ -329,15 +329,20 @@ const game = {
     const startHealth = (cfg && cfg.health) || 100;
     let kills = 0, health = startHealth, gameOver = false;
     let zombies = [];
-    let lastSpawn = 0, spawnInterval = 1200;
+    // Dynamic difficulty: harder = more required kills
+    const diffMult = Math.min(2, 0.6 + req * 0.18);
+    let spawnInterval = Math.max(500, 1400 - req * 100);
     let animId = null;
-    let mx, my; // crosshair position
+    let lastSpawn = 0;
+    let mx, my;
 
     // Mobile scaling
     const isMobile = window.innerWidth < 768 || 'ontouchstart' in window;
     const scale = Math.min(window.innerWidth, window.innerHeight) / 400;
     const zombieR = Math.max(14, 18 * scale);
-    const zombieSpeed = Math.max(25, 40 * scale);
+    const zombieSpeed = Math.max(30, 45 * scale * diffMult);
+    const zombieHP = req >= 7 ? 3 : 2;
+    const damagePerZombie = req >= 6 ? 20 : 15;
 
     const ov = document.createElement("div");
     ov.id = "minigame";
@@ -406,7 +411,7 @@ const game = {
         x: zombieR + Math.random() * (canvas.width - zombieR * 2),
         y: -r,
         r: r,
-        hp: 2,
+        hp: zombieHP,
         dead: false,
         speed: zombieSpeed + Math.random() * 30 * scale,
         color: `hsl(${80+Math.random()*30}, 30%, ${20+Math.random()*20}%)`
@@ -438,7 +443,7 @@ const game = {
         if (z.dead && z.y > canvas.height + 50) return;
         if (!z.dead) {
           z.y += z.speed * 0.016;
-          if (z.y > canvas.height - 20) { z.dead = true; health -= 10; document.getElementById("mg-health").textContent = "❤️ " + Math.max(0, health); }
+          if (z.y > canvas.height - 20) { z.dead = true; health -= damagePerZombie; document.getElementById("mg-health").textContent = "❤️ " + Math.max(0, health); }
         } else {
           z.y += 20 * 0.016;
         }
@@ -485,7 +490,8 @@ const game = {
       document.getElementById("mg-result").style.display = "block";
       const btn = document.getElementById("mg-continue");
       btn.style.display = "inline-block";
-      btn.onclick = () => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
         document.body.removeChild(ov);
         document.getElementById("quick-menu").classList.add("show");
         if (won) { self.advance(); }
