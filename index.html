@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>巨野一中：丧尸围城</title>
+
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -106,21 +107,35 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #0
 @media (max-width: 768px) {
   #title-screen h1 { font-size: 32px; letter-spacing: 6px; }
   #title-screen .subtitle { font-size: 16px; }
-  .char-sprite .placeholder, .char-sprite img { width: 90px; height: 90px; font-size: 32px; }
-  .char-sprite { margin: 0 -10px; }
-  #dialogue-box { padding: 15px 20px 25px; min-height: 180px; }
-  #dialogue-text { font-size: 16px; }
-  #speaker-name { font-size: 15px; }
+  .char-sprite .placeholder, .char-sprite img { width: 80px; height: 80px; font-size: 28px; }
+  .char-sprite { margin: 0 -8px; }
+  .char-sprite.left { transform: translateX(-40px); }
+  .char-sprite.right { transform: translateX(40px); }
+  #dialogue-box { padding: 12px 16px 20px; min-height: 150px; }
+  #dialogue-text { font-size: 16px; line-height: 1.6; }
+  #speaker-name { font-size: 14px; }
   #chapter-title .name { font-size: 28px; }
-  #choices { bottom: 240px; width: 90%; }
-  .choice-btn { font-size: 15px; padding: 12px 16px; }
+  #choices { bottom: 200px; width: 92%; }
+  .choice-btn { font-size: 15px; padding: 14px 16px; margin-bottom: 10px; }
   #quick-menu { top: 10px; right: 10px; }
   .char-select-item { width: 50px; height: 50px; font-size: 16px; }
+  #click-hint { font-size: 12px; right: 20px; bottom: 10px; }
+  #characters { bottom: 160px; height: 45%; }
+  #battle-game-container { display:none; }
+}
+@media (max-width: 480px) {
+  .char-sprite .placeholder, .char-sprite img { width: 60px; height: 60px; font-size: 22px; }
+  .char-sprite.left { transform: translateX(-20px); }
+  .char-sprite.right { transform: translateX(20px); }
+  #dialogue-box { min-height: 130px; padding: 10px 12px 18px; }
+  #dialogue-text { font-size: 15px; }
+  #characters { height: 40%; bottom: 140px; }
 }
 
 /* Blood drip on screen edges */
 .blood-effect { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; opacity: 0; transition: opacity 2s; background: radial-gradient(ellipse at 20% 30%, rgba(100,0,0,0.15) 0%, transparent 50%), radial-gradient(ellipse at 80% 20%, rgba(100,0,0,0.1) 0%, transparent 40%); }
 .blood-effect.active { opacity: 1; }
+
 </style>
 </head>
 <body>
@@ -300,7 +315,186 @@ const game = {
       if(scene.blood === false) document.getElementById("blood-effect").classList.remove("active");
       currentStep++;
       this.renderScene();
+    } else if(scene.type === "battle") {
+      this.startMiniGame(scene.config);
     }
+  },
+
+  // Mini-game: zombie shooting gallery (zero deps, pure Canvas)
+  startMiniGame(cfg) {
+    this.showDialogueBox(false);
+    this.clearCharacters();
+
+    const req = (cfg && cfg.requiredKills) || 5;
+    const startHealth = (cfg && cfg.health) || 100;
+    let kills = 0, health = startHealth, gameOver = false;
+    let zombies = [];
+    let lastSpawn = 0, spawnInterval = 1200;
+    let animId = null;
+    let mx, my; // crosshair position
+
+    // Mobile scaling
+    const isMobile = window.innerWidth < 768 || 'ontouchstart' in window;
+    const scale = Math.min(window.innerWidth, window.innerHeight) / 400;
+    const zombieR = Math.max(14, 18 * scale);
+    const zombieSpeed = Math.max(25, 40 * scale);
+
+    const ov = document.createElement("div");
+    ov.id = "minigame";
+    ov.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;z-index:300;background:#0a0a0a;touch-action:none;cursor:crosshair;user-select:none;-webkit-user-select:none;";
+    ov.innerHTML = '<canvas id="mg-canvas"></canvas>' +
+      '<div id="mg-hud" style="position:fixed;top:'+(isMobile?10:15)+'px;left:0;width:100%;padding:0 '+(isMobile?10:20)+'px;display:flex;justify-content:space-between;z-index:301;pointer-events:none;font-size:'+(isMobile?14:18)+'px;color:#fff;font-weight:bold;text-shadow:0 2px 8px #000;">' +
+        '<span>击杀: <span id="mg-kills">0</span>/<span id="mg-req">'+req+'</span></span>' +
+        '<span id="mg-health">❤️ '+startHealth+'</span>' +
+      '</div>' +
+      '<div id="mg-tap-hint" style="position:fixed;bottom:'+(isMobile?120:80)+'px;left:50%;transform:translateX(-50%);z-index:301;color:rgba(255,255,255,0.3);font-size:14px;letter-spacing:2px;pointer-events:none;'+(isMobile?'':'display:none;')+'">触碰屏幕射击</div>' +
+      '<div id="mg-result" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:302;text-align:center;display:none;">' +
+        '<div id="mg-title" style="font-size:'+(isMobile?36:48)+'px;font-weight:900;color:#ffd700;text-shadow:0 0 40px rgba(255,215,0,0.3);"></div>' +
+        '<div id="mg-sub" style="font-size:'+(isMobile?16:20)+'px;color:rgba(255,255,255,0.6);margin-top:10px;"></div>' +
+        '<button id="mg-continue" style="margin-top:'+(isMobile?20:30)+'px;padding:'+(isMobile?'14px 50px':'12px 40px')+';font-size:'+(isMobile?18:20)+'px;background:#ffd700;color:#000;border:none;border-radius:8px;cursor:pointer;display:none;">继续剧情</button>' +
+      '</div>';
+    document.body.appendChild(ov);
+
+    const canvas = document.getElementById("mg-canvas");
+    const resizeCanvas = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    resizeCanvas();
+    canvas.style.cssText = "width:100%;height:100%;display:block;touch-action:none;";
+    window.addEventListener("resize", resizeCanvas);
+
+    const ctx = canvas.getContext("2d");
+
+    // Track aim position
+    mx = canvas.width / 2;
+    my = canvas.height / 2;
+
+    const setAim = (x, y) => { mx = x; my = y; };
+    ov.addEventListener("mousemove", (e) => { mx = e.clientX; my = e.clientY; });
+    ov.addEventListener("touchmove", (e) => { e.preventDefault(); const t = e.touches[0]; mx = t.clientX; my = t.clientY; }, {passive:false});
+
+    const shoot = (x, y) => {
+      if (gameOver) return;
+      let hit = false;
+      zombies.forEach(z => {
+        if (z.dead) return;
+        const dx = x - z.x, dy = y - z.y;
+        if (dx*dx + dy*dy < z.r*z.r) { z.hp--; hit = true; if (z.hp <= 0) { z.dead = true; kills++; document.getElementById("mg-kills").textContent = kills; } }
+      });
+      canvas.style.filter = "brightness(1.2)";
+      setTimeout(() => canvas.style.filter = "none", 50);
+    };
+
+    // Unified shoot handler - prevents double-fire on mobile
+    ov.addEventListener("click", (e) => shoot(e.clientX, e.clientY));
+    let lastTouchTime = 0;
+    ov.addEventListener("touchstart", (e) => {
+      e.preventDefault();
+      const now = Date.now();
+      if (now - lastTouchTime < 100) return; // Debounce
+      lastTouchTime = now;
+      const t = e.changedTouches[0];
+      mx = t.clientX; my = t.clientY;
+      shoot(t.clientX, t.clientY);
+    }, {passive:false});
+
+    // Spawn zombie
+    function spawn() {
+      const r = zombieR + (Math.random() - 0.5) * 8;
+      zombies.push({
+        x: zombieR + Math.random() * (canvas.width - zombieR * 2),
+        y: -r,
+        r: r,
+        hp: 2,
+        dead: false,
+        speed: zombieSpeed + Math.random() * 30 * scale,
+        color: `hsl(${80+Math.random()*30}, 30%, ${20+Math.random()*20}%)`
+      });
+    }
+
+    for (let i = 0; i < 3; i++) spawn();
+
+    // Game loop
+    function loop(time) {
+      if (time - lastSpawn > spawnInterval) {
+        lastSpawn = time;
+        if (zombies.filter(z => !z.dead).length < req + 3) spawn();
+      }
+
+      // Clear
+      ctx.fillStyle = "#0a0a0a";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Grid
+      ctx.strokeStyle = "rgba(255,255,255,0.03)";
+      ctx.lineWidth = 1;
+      const gridSize = Math.max(20, 40 * scale);
+      for (let x = 0; x < canvas.width; x += gridSize) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
+      for (let y = 0; y < canvas.height; y += gridSize) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
+
+      // Update & draw zombies
+      zombies.forEach(z => {
+        if (z.dead && z.y > canvas.height + 50) return;
+        if (!z.dead) {
+          z.y += z.speed * 0.016;
+          if (z.y > canvas.height - 20) { z.dead = true; health -= 10; document.getElementById("mg-health").textContent = "❤️ " + Math.max(0, health); }
+        } else {
+          z.y += 20 * 0.016;
+        }
+        ctx.beginPath();
+        ctx.arc(z.x, z.y, z.r, 0, Math.PI * 2);
+        ctx.fillStyle = !z.dead ? z.color : "rgba(100,0,0,0.5)";
+        ctx.fill();
+        ctx.strokeStyle = !z.dead ? "rgba(255,50,50,0.6)" : "transparent";
+        ctx.lineWidth = Math.max(2, 3 * scale);
+        ctx.stroke();
+        if (!z.dead) {
+          ctx.fillStyle = "#ff0000";
+          const eR = Math.max(2, 3 * scale);
+          const eOff = Math.max(3, 4 * scale);
+          ctx.beginPath(); ctx.arc(z.x - eOff, z.y - 2, eR, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(z.x + eOff, z.y - 2, eR, 0, Math.PI * 2); ctx.fill();
+        }
+      });
+
+      // Crosshair
+      const chSize = Math.max(10, 15 * scale);
+      ctx.strokeStyle = "#ff4444";
+      ctx.lineWidth = Math.max(1.5, 2);
+      ctx.beginPath(); ctx.moveTo(mx - chSize, my); ctx.lineTo(mx - chSize/3, my); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx + chSize/3, my); ctx.lineTo(mx + chSize, my); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx, my - chSize); ctx.lineTo(mx, my - chSize/3); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx, my + chSize/3); ctx.lineTo(mx, my + chSize); ctx.stroke();
+      ctx.fillStyle = "#ff4444";
+      ctx.beginPath(); ctx.arc(mx, my, Math.max(1.5, 2), 0, Math.PI * 2); ctx.fill();
+
+      // Win/lose
+      if (kills >= req && !gameOver) { gameOver = true; showResult(true); }
+      if (health <= 0 && !gameOver) { gameOver = true; showResult(false); }
+
+      animId = requestAnimationFrame(loop);
+    }
+
+    function showResult(won) {
+      cancelAnimationFrame(animId);
+      window.removeEventListener("resize", resizeCanvas);
+      document.getElementById("mg-title").textContent = won ? "胜利" : "阵亡";
+      document.getElementById("mg-title").style.color = won ? "#ffd700" : "#ff4444";
+      document.getElementById("mg-sub").textContent = won ? "击杀 " + kills + " 个丧尸!" : "你被丧尸淹没了……";
+      document.getElementById("mg-result").style.display = "block";
+      const btn = document.getElementById("mg-continue");
+      btn.style.display = "inline-block";
+      btn.onclick = () => {
+        document.body.removeChild(ov);
+        document.getElementById("quick-menu").classList.add("show");
+        if (won) { self.advance(); }
+        else { alert("丧尸突破了防线……再试一次。"); currentStep = 0; self.renderScene(); }
+      };
+    }
+
+    const self = this;
+    animId = requestAnimationFrame(loop);
   },
 
   advance() {
@@ -600,6 +794,7 @@ const SCENARIOS = {
       { type:"dialogue", speaker:"叙述", text:"他话音未落，教室的门突然被猛撞了一下。木门发出一声沉闷的巨响，门板向内凸出了一块。" },
       { type:"dialogue", speaker:"王文轩", pos:"center", text:"桌子！用桌子顶上！", extraChars:[{name:"杨子琪",pos:"right"}] },
       { type:"dialogue", speaker:"叙述", text:"我反应过来，一把掀翻了自己的课桌，和几个人一起把桌子堆到门口。门外的撞击声一下接着一下，桌上的书本哗啦啦地往下掉。" },
+      { type:"battle", config:{ requiredKills:3 } },
       { type:"dialogue", speaker:"叙述", text:"撞击声持续了大概五分钟，然后停了。走廊里安静下来，安静得像一座坟墓。" },
       { type:"dialogue", speaker:"国好", pos:"center", text:"里面有人吗？活的？" },
       { type:"dialogue", speaker:"叙述", text:"门外站着的确实是国好，她手里的折叠刀上沾着黑色的血。她的眼镜歪在一边，马尾辫散了一半，校服袖子上被撕开了一道口子，露出手臂上三道新鲜的血痕。" },
@@ -642,7 +837,8 @@ const SCENARIOS = {
       // Underground passage
       { type:"bg", bg:"bg-tunnel", overlay:"overlay-dark" },
       { type:"dialogue", speaker:"叙述", text:"地下通道的入口在教学楼一楼东侧卫生间后面。一扇锈迹斑斑的铁门被一张已经发黄的封条封着。王文轩举起消防斧，对准锁链砸了下去。" },
-      { type:"dialogue", speaker:"叙述", text:"铁门被打开了，露出了黑洞洞的通道。一股潮湿的、发霉的味道扑面而来。" },
+      { type:"dialogue", speaker:"叙述", text:"铁门被打开了，露出了黑洞洞的通道。一股潮湿的、发霉的味道扑面而来。我们爬下铁梯，黑暗中隐隐传来低沉的嘶吼声。" },
+      { type:"battle", config:{ requiredKills:4 } },
       { type:"dialogue", speaker:"叙述", text:"我们沿着管道走了大概二十分钟。越走越窄，到后面只能弯腰通过。空气里弥漫着一种说不清的臭味——腐烂的食物混合着铁锈的味道。" },
       { type:"dialogue", speaker:"叙述", text:"前面有光——是一道铁栅栏天窗。王文轩把铁栅栏撬开，探出头去看了一圈。" },
       { type:"dialogue", speaker:"王文轩", pos:"center", text:"到食堂了。在后厨的储物间里。" },
@@ -658,6 +854,88 @@ const SCENARIOS = {
       { type:"dialogue", speaker:"叙述", text:"王文轩在会议室里挂了一张手写的大字。上面只有三条规则：一、不单独行动。二、不发出噪音。三、不放弃希望。" },
       { type:"dialogue", speaker:"叙述", text:"晚上，我坐在窗边值夜哨。月光照在操场上，那些丧尸还在游荡，像永远停不下来的影子。我想起了王文轩说的话——永远给自己留一条退路。可是当整个城市都是丧尸的时候，退路在哪里？" },
       { type:"dialogue", speaker:"系统", text:"—— 第一章 · 完 ——" },
+      { type:"chapter", target:"ch1_liu" }
+    ]
+  },
+
+  // 刘欣彤特辑：奔跑者
+  ch1_liu: {
+    num: "番外·其一",
+    title: "刘欣彤·奔跑者",
+    desc: "她比任何人都快——包括死神",
+    bg: "bg-classroom",
+    scenes: [
+      { type:"dialogue", speaker:"叙述", text:"时间倒回到开学那天的下午。最后一节课的铃声响了。" },
+      { type:"dialogue", speaker:"叙述", text:"刘欣彤没有回教室。她跟体育老师请了假——下午有运动会选拔赛，她是高二女子四百米和八百米的卫冕冠军。校纪录保持者。" },
+      { type:"dialogue", speaker:"刘欣彤", pos:"center", text:"王老师，借一下起跑器。" },
+      { type:"dialogue", speaker:"叙述", text:"她蹲在跑道上，左脚踩实，右脚虚点，双手撑着地面。发令枪响起来的时候——她像一支箭一样冲了出去。" },
+      { type:"dialogue", speaker:"叙述", text:"跑到弯道的时候，她听到了尖叫声。" },
+      { type:"dialogue", speaker:"叙述", text:"不是加油声——是恐惧的尖叫。她本能地减速回头，看见一群灰白色皮肤的人从教学楼的大门涌出来，扑向操场上的人。" },
+      { type:"bg", bg:"bg-outbreak", overlay:"overlay-panic", blood:true },
+      { type:"dialogue", speaker:"叙述", text:"有一个穿着校服的男生被扑倒了。刘欣彤认识他——高二三班的体育委员，昨天还跟她商量接力赛的棒次。他的喉咙在喷血。" },
+      { type:"dialogue", speaker:"叙述", text:"刘欣彤的第一反应不是跑。是——救人。她冲过去，一脚踢开那个趴在他身上的东西。那一脚把那个丧尸踢出去了两三米远——校田径队的腿力不是开玩笑的。" },
+      { type:"dialogue", speaker:"叙述", text:"但是更多的丧尸扑过来了。她拖着那个男生往教学楼跑，跑得像运动会最后一百米冲刺那么快。而她的确是全校跑得最快的人。" },
+      { type:"dialogue", speaker:"叙述", text:"她跑进了教学楼，把那个男生拖进了最近的教室，锁上门，抵死桌子。那个男生已经不行了——他的脖子被撕开了一道口子，血怎么都止不住。他最后说了一句'谢谢'就再也没有动静了。" },
+      { type:"dialogue", speaker:"叙述", text:"刘欣彤没有哭。她背靠着门坐在地上，大口大口地喘气，低头看着自己校服上全是血。" },
+      { type:"dialogue", speaker:"叙述", text:"然后她想起了什么——广播室。五楼。她是学校广播站的成员，每周二和周四负责下午的广播。广播室的设备可以和全校的喇叭连通——如果还有活着的人，他们需要知道发生了什么。" },
+      { type:"bg", bg:"bg-corridor", overlay:"overlay-dark" },
+      { type:"dialogue", speaker:"叙述", text:"从三楼到五楼，她用了不到四十秒。三个转弯，四段楼梯，两只丧尸——她在楼梯转角用灭火器砸倒了第一个，从楼梯扶手上翻过去躲过了第二个。" },
+      { type:"dialogue", speaker:"叙述", text:"广播室的门锁着。她踹了两脚——门框裂了。广播设备还在运作。" },
+      { type:"dialogue", speaker:"刘欣彤", pos:"center", text:"各位同学、老师——我是高二一班的刘欣彤。学校已经出现了不明感染者。请所有还活着的人，锁好门窗，不要发出声音，等待救援。重复一遍——不要发出声音。" },
+      { type:"dialogue", speaker:"叙述", text:"她一遍又一遍地重复。然后她注意到了广播台旁边的角落里，放着一台积满灰尘的旧机器——一台退役多年的无线电收发机。前面板上的指示灯竟然在闪烁。" },
+      { type:"dialogue", speaker:"叙述", text:"不是杂音。有人在说话。" },
+      { type:"dialogue", speaker:"刘欣彤", pos:"center", text:"喂？喂！有人吗？有人在听吗？" },
+      { type:"dialogue", speaker:"徐光地", pos:"center", text:"……收听到信号了……但信号不稳定……你是谁？" },
+      { type:"dialogue", speaker:"叙述", text:"那是她第一次听到徐光地的声音——从那个叫作天元生物科技的地方传来的声音。" },
+      { type:"dialogue", speaker:"叙述", text:"她把频率记了下来。把坐标记了下来。然后把消息带给了我们。" },
+      { type:"bg", bg:"bg-night", overlay:"overlay-dark" },
+      { type:"dialogue", speaker:"叙述", text:"后来我问她，当时怕不怕。" },
+      { type:"dialogue", speaker:"刘欣彤", pos:"center", text:"怕。怕得要死。" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"那你为什么还要去广播室？" },
+      { type:"dialogue", speaker:"刘欣彤", pos:"center", text:"因为我跑得快啊。如果连跑得最快的人都躲起来——那其他人怎么办？" },
+      { type:"bg", bg:"bg-corridor" },
+      { type:"dialogue", speaker:"系统", text:"—— 番外·其一 完 ——" },
+      { type:"chapter", target:"ch1_yang" }
+    ]
+  },
+
+  // 杨子琪特辑：同桌
+  ch1_yang: {
+    num: "番外·其二",
+    title: "杨子琪·同桌",
+    desc: "最胆小的人，也可以最勇敢",
+    bg: "bg-classroom",
+    scenes: [
+      { type:"dialogue", speaker:"叙述", text:"在整个巨野一中里，杨子琪是离我最近的人。" },
+      { type:"dialogue", speaker:"叙述", text:"不是因为别的——只是因为我们的座位被排在了一起，从高一就开始了。他坐右边靠窗，我坐左边靠过道，中间堆着两摞永远理不清的书。" },
+      { type:"dialogue", speaker:"杨子琪", pos:"center", text:"完了完了完了完了完了完了——" },
+      { type:"dialogue", speaker:"叙述", text:"他蹲在会议室角落里，抱着头，嘴里念念有词。从丧尸爆发到现在，他一直在重复这三个字。国好说他是PTSD反应，应该给他一点空间。" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"他这样多久了？" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"从他看到操场上那个人被吃的时候开始。" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"——他是你同桌？" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"对。" },
+      { type:"dialogue", speaker:"叙述", text:"王文轩走过去，蹲在杨子琪面前。他没有说安慰的话。他只是把一根削尖的拖把棍放在了杨子琪的手边。" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"怕，是正常的。但是活人要做活人的事——拿起它。" },
+      { type:"dialogue", speaker:"叙述", text:"杨子琪没拿。但也没再念叨了。" },
+      { type:"bg", bg:"bg-night", overlay:"overlay-dark" },
+      { type:"dialogue", speaker:"叙述", text:"那天晚上轮到杨子琪值夜——跟我一班。安静的走廊里只剩下我们两个人。" },
+      { type:"dialogue", speaker:"杨子琪", pos:"center", text:"……你说，我们能活下来吗？" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"能。一定能的。" },
+      { type:"dialogue", speaker:"叙述", text:"杨子琪沉默了一会儿，从口袋里掏出了手机——早就没信号了，但他一直没有关机。" },
+      { type:"dialogue", speaker:"杨子琪", pos:"center", text:"手机里有我妈的照片。我最后一次跟她通话是前天，她说晚上给我炖排骨，叫我早点回家，我说不回了要上晚自习。" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"……" },
+      { type:"dialogue", speaker:"杨子琪", pos:"center", text:"你说她会不会还活着？" },
+      { type:"dialogue", speaker:"叙述", text:"我不知道该怎么回答他。我甚至不知道自己的家人在哪里。" },
+      { type:"dialogue", speaker:"杨子琪", pos:"center", text:"算了，当我没问。睡觉睡觉。" },
+      { type:"dialogue", speaker:"叙述", text:"他侧过身去，背对着我。但我知道他没有睡着——因为他一直在偷偷地用袖子擦眼睛。" },
+      { type:"bg", bg:"bg-corridor", overlay:"overlay-dark" },
+      { type:"dialogue", speaker:"叙述", text:"第二天他变得非常安静。安静到反常。他在教室里来回走动，像是在找什么东西。" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"你找什么呢？" },
+      { type:"dialogue", speaker:"杨子琪", pos:"center", text:"找一根结实点的棍子。" },
+      { type:"dialogue", speaker:"叙述", text:"他找到了。昨天王文轩放在他手边的那一根。" },
+      { type:"dialogue", speaker:"杨子琪", pos:"center", text:"我想过了。如果我妈还活着——我要找到她。如果我死了——她至少知道她儿子是站着死的。" },
+      { type:"dialogue", speaker:"叙述", text:"那是杨子琪在整个末日里说过的——最像男子汉的一句话。" },
+      { type:"dialogue", speaker:"系统", text:"—— 番外·其二 完 ——" },
       { type:"chapter", target:"ch2" }
     ]
   },
@@ -698,6 +976,45 @@ const SCENARIOS = {
       { type:"dialogue", speaker:"叙述", text:"后来我才知道——那是我们最后一次见到数学老师。" },
       { type:"bg", bg:"bg-street", overlay:"overlay-dark" },
       { type:"dialogue", speaker:"系统", text:"—— 第二章 · 完 ——" },
+      { type:"chapter", target:"ch2_math" }
+    ]
+  },
+
+  // 数学老师特辑：最后的课
+  ch2_math: {
+    num: "番外·其三",
+    title: "数学老师·最后一课",
+    desc: "他用粉笔写了一辈子的公式——最后用命写了一个",
+    bg: "bg-classroom",
+    scenes: [
+      { type:"dialogue", speaker:"叙述", text:"凌晨四点半。整栋教学楼安静得像一座巨大的棺材。我背着那个破书包站在会议室的门口，准备出发。" },
+      { type:"dialogue", speaker:"叙述", text:"数学老师已经站在那里了。他穿着一件洗得发白的旧夹克——跟他三十年来每一件夹克一样——手里攥着一卷纸。" },
+      { type:"dialogue", speaker:"数学老师", pos:"center", text:"醒了？" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"您怎么起这么早？" },
+      { type:"dialogue", speaker:"数学老师", pos:"center", text:"睡不着。" },
+      { type:"dialogue", speaker:"叙述", text:"他把那卷纸递给了我。是一张手绘的地图——准确得让人吃惊。每一条街道，每一个转角，每一栋可能有物资的建筑，全都标得清清楚楚。甚至用红笔标注了沿途可能有丧尸聚集的位置。" },
+      { type:"dialogue", speaker:"数学老师", pos:"center", text:"我在这里教了三十年书。巨野的每一条街我都走过。那个老周知道路怎么走——但他记性没我好。" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"——您画了多久？" },
+      { type:"dialogue", speaker:"数学老师", pos:"center", text:"一夜。" },
+      { type:"dialogue", speaker:"叙述", text:"我没有说谢谢。因为一个谢谢太轻了，担不起一个老人用一整夜的灯光换来的东西。" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"您等着我们回来。" },
+      { type:"dialogue", speaker:"数学老师", pos:"center", text:"行。我等着。" },
+      { type:"bg", bg:"bg-corridor", overlay:"overlay-dark" },
+      { type:"dialogue", speaker:"叙述", text:"我们出发后，数学老师把剩下的学生全部转移到了实验楼。教学楼已经不安全了——地下通道被丧尸发现了，会议室的那扇门撑不了多久。" },
+      { type:"dialogue", speaker:"叙述", text:"实验楼的物理实验室有一个钢制的防盗门。数学老师年轻时参加过学校的基建——他知道那扇门是整个学校最坚固的屏障。他把三十二个学生关在里面。" },
+      { type:"dialogue", speaker:"叙述", text:"他自己没有进去。因为门只能从外面锁上——而里面没有人会用那把锁。" },
+      { type:"bg", bg:"bg-corridor", blood:true },
+      { type:"dialogue", speaker:"叙述", text:"他在走廊里拉了五张桌子、两把椅子、一个铁皮柜子做路障。然后他坐在路障后面，等着。丧尸来了。很多。多到他数不清——他年轻的时候当过两年兵，虽然那是四十年前的事，但他还记得怎么握刀。" },
+      { type:"dialogue", speaker:"系统", text:"—— 你接过了数学老师的剔骨刀。守住这道门。尽你所能。——" },
+      { type:"battle", config:{ requiredKills:7, health:50 } },
+      { type:"dialogue", speaker:"叙述", text:"第一只丧尸越过路障的时候，他捅穿了它的眼眶。第二只，他削掉了它的半边脑袋。第三只——他没能挡住。走廊里传来一声闷响。一声倒地声。然后是什么东西拖拽着远去的摩擦声。" },
+      { type:"bg", bg:"bg-dawn", overlay:"overlay-light" },
+      { type:"dialogue", speaker:"叙述", text:"两个小时后，杨子琪打开了物理实验室的门。走廊里全是血。路障倒了。数学老师的眼镜掉在桌子下面——左边的镜片碎了。但是钢制防盗门锁得好好的。" },
+      { type:"dialogue", speaker:"叙述", text:"钥匙在他口袋里。他用自己的身体把钥匙堵在门缝外面——那些东西拖走他的时候，钥匙掉在了门框下面。他是故意的——他怕钥匙被丧尸带走。" },
+      { type:"dialogue", speaker:"叙述", text:"我又想起了出发那天早上，他把地图递给我时说的那句：'行。我等着。'" },
+      { type:"dialogue", speaker:"叙述", text:"老师。路，我找到了。但接您的那趟车——永远到不了站了。" },
+      { type:"bg", bg:"bg-epilogue", overlay:"overlay-dark" },
+      { type:"dialogue", speaker:"系统", text:"—— 番外·其三 完 ——" },
       { type:"chapter", target:"ch3" }
     ]
   },
@@ -717,11 +1034,14 @@ const SCENARIOS = {
       { type:"dialogue", speaker:"叙述", text:"我们沿着麟山路向南走。走了大概十分钟——前面出现了一辆横在路中间的公交车。公交车上，有人在动。" },
       { type:"dialogue", speaker:"王文轩", pos:"center", text:"他们闻到我们了——跑！" },
       { type:"dialogue", speaker:"叙述", text:"我们撒腿就跑。身后的脚步声瞬间密集起来。三具丧尸以完全违背人体力学的姿势在追我们——膝盖不打弯，身体前倾，双臂前伸。但跑得比正常人慢不了多少。" },
+      { type:"battle", config:{ requiredKills:5 } },
       { type:"dialogue", speaker:"国好", pos:"center", text:"前面有岔路！左转！" },
       { type:"dialogue", speaker:"叙述", text:"我们冲进了一条小巷。巷子很窄，两侧都是居民楼的外墙。老周用身份证划开了一栋居民楼的防盗门锁，我们冲了进去。" },
       { type:"dialogue", speaker:"叙述", text:"门外的撞击声持续了大概五分钟，然后渐渐弱了下去。我们等了半小时——终于安全了。" },
       { type:"bg", bg:"bg-dawn", overlay:"overlay-light" },
-      { type:"dialogue", speaker:"叙述", text:"天开始蒙蒙亮了。我们继续前进。在前进路上——遇到了一具军人的尸体。穿着迷彩服，旁边扔着一把九五式步枪。" },
+      { type:"dialogue", speaker:"叙述", text:"天开始蒙蒙亮了。我们继续前进——但路上已经不安静了。丧尸从四面八方围过来，数量远超之前。" },
+      { type:"battle", config:{ requiredKills:6 } },
+      { type:"dialogue", speaker:"叙述", text:"在前进路上——遇到了一具军人的尸体。穿着迷彩服，旁边扔着一把九五式步枪。" },
       { type:"dialogue", speaker:"王文轩", pos:"center", text:"会用吗？" },
       { type:"dialogue", speaker:"{player}", pos:"center", text:"不会。" },
       { type:"dialogue", speaker:"王文轩", pos:"center", text:"打开保险，扣扳机就行。但只有在万不得已的时候才用——枪声会引来更多东西。" },
@@ -743,6 +1063,82 @@ const SCENARIOS = {
       { type:"dialogue", speaker:"叙述", text:"早上六点二十分。我们终于看到了天元生物科技有限公司的大门——三米高的巨大铁门，门楣上挂着六个鎏金大字。门前列队站着八个人，穿着白色防护服，全副武装。" },
       { type:"dialogue", speaker:"徐光地", pos:"center", text:"欢迎来到天元。我叫徐光地——这里的负责人。" },
       { type:"dialogue", speaker:"系统", text:"—— 第三章 · 完 ——" },
+      { type:"chapter", target:"ch3_wang" }
+    ]
+  },
+
+  // 王冉特辑：锁匠的女儿
+  ch3_wang: {
+    num: "番外·其四",
+    title: "王冉·锁匠的女儿",
+    desc: "最安静的人，手里有钥匙",
+    bg: "bg-street",
+    scenes: [
+      { type:"dialogue", speaker:"叙述", text:"从天元到菏泽的路上，我们在一家废弃的供销社前停下了。不是因为里面有丧尸——是因为它的大门锁得严严实实的。没有破窗，没有撬痕。这说明里面可能还有物资。" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"门锁太结实了。老周，你那套开锁的玩意儿能行吗？" },
+      { type:"dialogue", speaker:"神秘老者", pos:"center", text:"我试试——不行，这是新式锁，身份证塞不进去。" },
+      { type:"dialogue", speaker:"叙述", text:"就在大家准备放弃的时候，王冉挤到了前面。" },
+      { type:"dialogue", speaker:"王冉", pos:"center", text:"让我看看。" },
+      { type:"dialogue", speaker:"叙述", text:"她在门前蹲下来，从口袋里掏出了一个巴掌大的旧铁盒。打开，里面躺着几根弯弯曲曲的铁丝和一把小锉刀。" },
+      { type:"dialogue", speaker:"叙述", text:"不到三分钟。锁芯咔哒一声转开了。所有人都愣住了。" },
+      { type:"dialogue", speaker:"王文轩", pos:"center", text:"……你怎么会的？" },
+      { type:"dialogue", speaker:"王冉", pos:"center", text:"我爹开锁铺的。我六岁就会用钢丝捅宿舍门了。" },
+      { type:"bg", bg:"bg-night", overlay:"overlay-dark" },
+      { type:"dialogue", speaker:"叙述", text:"供销社里面确实有不少存货——成箱的方便面、矿泉水、罐头、打火机、蜡烛、电池，甚至还有一箱老式的手电筒。这是我们在那几天里最大的一笔收获。" },
+      { type:"dialogue", speaker:"叙述", text:"装车的时候，王冉坐在供销社门前的台阶上，手里拿着那个破铁盒，对着月光发呆。" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"不装车？" },
+      { type:"dialogue", speaker:"王冉", pos:"center", text:"等会儿。坐一下。" },
+      { type:"dialogue", speaker:"叙述", text:"我坐在了她旁边。秋天的风很凉，吹得路边的枯叶沙沙地响。" },
+      { type:"dialogue", speaker:"王冉", pos:"center", text:"我家的铺子在巨野老街上，人民路往南走三百米，拐角有个修自行车的——旁边就是。'王家开锁'，红底黄字的招牌，三十年了。" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"你爹呢？" },
+      { type:"dialogue", speaker:"王冉", pos:"center", text:"不知道。爆发那天他在店里。我给他打了十几个电话——没人接。后来我再也没打过。" },
+      { type:"dialogue", speaker:"叙述", text:"她把铁盒打开，里面除了开锁工具，还有一张叠成小方块的旧照片。照片上是一个中年男人，围着一件沾满机油的围裙，站在一家小锁铺门口笑得很开心。" },
+      { type:"dialogue", speaker:"王冉", pos:"center", text:"等他来找我。如果他还活着的话——他肯定会来找我的。" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"他教了你什么？" },
+      { type:"dialogue", speaker:"王冉", pos:"center", text:"他说，锁是用来保护人的，不是用来挡住人的。你学会了怎么开锁——就知道怎么保护人了。" },
+      { type:"dialogue", speaker:"叙述", text:"她把铁盒合上，站起来拍了拍裤子上的灰。" },
+      { type:"dialogue", speaker:"王冉", pos:"center", text:"走吧。后面还有好几道门等着我们开呢。" },
+      { type:"bg", bg:"bg-street" },
+      { type:"dialogue", speaker:"系统", text:"—— 番外·其四 完 ——" },
+      { type:"chapter", target:"ch3_oldman" }
+    ]
+  },
+
+  // 神秘老者特辑：两枚鸡蛋
+  ch3_oldman: {
+    num: "番外·其五",
+    title: "神秘老者·两枚鸡蛋",
+    desc: "整个末日里，最好吃的一碗面",
+    bg: "bg-dawn",
+    scenes: [
+      { type:"dialogue", speaker:"叙述", text:"现在来说说那个老人。陈国栋。我们进城之前遇到的最后一个人。" },
+      { type:"dialogue", speaker:"叙述", text:"他的房子在一片荒废的玉米地旁边，孤零零的，像是被世界遗忘在角落里的一个旧物件。院墙上爬满了枯死的藤蔓，但是院子里面打扫得很干净——干净得不像是一个末日里的人会做的事。" },
+      { type:"dialogue", speaker:"叙述", text:"他给我们一人倒了一杯茶。是粗茶，但是滚烫的。" },
+      { type:"dialogue", speaker:"陈国栋", pos:"center", text:"你们是学生吧。从巨野来的？" },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"您怎么知道？" },
+      { type:"dialogue", speaker:"陈国栋", pos:"center", text:"校服虽然脏了，但款式没变。我孙子也穿这个。" },
+      { type:"dialogue", speaker:"叙述", text:"他说的'也'字，是过去时。" },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"您孙子……" },
+      { type:"dialogue", speaker:"陈国栋", pos:"center", text:"——失联了。爆发那天他在县里上学，我在家。我骑着摩托车骑了三十里地去找他——路上全是那些东西。我没能到学校。又骑回来了。" },
+      { type:"dialogue", speaker:"叙述", text:"他说这些话的时候，语气平淡得像是在说昨天的天气预报。但他的手在微微发抖——他握着茶杯，指节泛白。" },
+      { type:"dialogue", speaker:"叙述", string:"陈国栋站起来，转身进了厨房。灶台上放着两个鸡蛋——不多不少，正好两个。他打开了一袋放了不知道多少天的挂面，下了一锅清汤面。两个荷包蛋，一人半个。" },
+      { type:"dialogue", speaker:"陈国栋", pos:"center", text:"吃吧。吃饱了才有力气赶路。" },
+      { type:"dialogue", speaker:"叙述", text:"那是我这辈子吃过的最好吃的一碗面。不是因为面的味道——是因为给面的人。" },
+      { type:"dialogue", speaker:"叙述", text:"临走的时候，陈国栋把我们送到门口。我走在最后一个。他叫住了我。" },
+      { type:"dialogue", speaker:"陈国栋", pos:"center", text:"孩子，我能问你一个问题吗？" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"您说。" },
+      { type:"dialogue", speaker:"陈国栋", pos:"center", text:"你们这一路——见到过活人吗？" },
+      { type:"dialogue", speaker:"叙述", text:"我沉默了很久。" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"见到过。但是不多。而且——" },
+      { type:"dialogue", speaker:"陈国栋", pos:"center", text:"而且什么？" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"活人有时候比那些东西更可怕。" },
+      { type:"dialogue", speaker:"叙述", text:"陈国栋看了我很久。然后他用那双粗糙得像树皮一样的手，拍了拍我的肩膀。" },
+      { type:"dialogue", speaker:"陈国栋", pos:"center", text:"那就别变成他们。" },
+      { type:"dialogue", speaker:"叙述", text:"车子发动后，我从后视镜里看到了他——他站在那扇锈迹斑斑的铁门口，一直没有回去。太阳从他的背后升起来，把他的影子拉得很长很长。" },
+      { type:"dialogue", speaker:"叙述", text:"我没有说的是——我在他转身的时候，看到他偷偷把什么东西塞进了我们的行李袋。后来我翻出来看，是一张皱巴巴的纸，上面用铅笔写着一个字：'活'。" },
+      { type:"dialogue", speaker:"叙述", text:"那张纸我到现在还留着。" },
+      { type:"bg", bg:"bg-dawn", overlay:"overlay-light" },
+      { type:"dialogue", speaker:"系统", text:"—— 番外·其五 完 ——" },
       { type:"chapter", target:"ch4" }
     ]
   },
@@ -806,6 +1202,8 @@ const SCENARIOS = {
       { type:"dialogue", speaker:"叙述", text:"没有人接话。我们继续开车，继续向前。" },
       { type:"bg", bg:"bg-military" },
       { type:"dialogue", speaker:"叙述", text:"下午两点左右，我们看到了菏泽市区的边缘。那些高楼——商业大厦、电视塔、牡丹广场——在午后的薄雾中若隐若现。城市看起来完好无损，像是从未发生过什么事。但街上没有活人。" },
+      { type:"dialogue", speaker:"叙述", text:"接近武装部的时候，丧尸像潮水一样涌了上来——它们知道这里有人在坚守。" },
+      { type:"battle", config:{ requiredKills:8, health:120 } },
       { type:"dialogue", speaker:"叙述", text:"菏泽市人民武装部大院。围墙，铁丝网，门口堆着沙袋和路障。主楼上飘扬着一面五星红旗。" },
       { type:"dialogue", speaker:"国好", pos:"center", text:"有国旗——他们还在！" },
       { type:"dialogue", speaker:"叙述", text:"国好拿起对讲机，接通了频率——" },
@@ -828,8 +1226,62 @@ const SCENARIOS = {
       { type:"dialogue", speaker:"杨子琪", pos:"center", text:"好，我们等着。" },
       { type:"dialogue", speaker:"叙述", text:"挂掉电话之后，我走出帐篷，坐在院子里的一块石头上。菏泽的夜空很清澈，星星密密麻麻地铺满了整个天幕。我不知道这场灾难还要持续多久。不知道还会死多少人。不知道最终会变成怎样。但我知道——只要还有人活着，只要还有人在战斗，只要还有人在——就还有希望。" },
       { type:"bg", bg:"bg-epilogue", overlay:"overlay-dark" },
+      { type:"chapter", target:"ch6" }
+    ]
+  },
+
+  // 张文轩特辑：军人的责任
+  ch6: {
+    num: "终章",
+    title: "张文轩·军人的责任",
+    desc: "有人把希望送到了，有人把希望守住了",
+    bg: "bg-military",
+    scenes: [
+      { type:"dialogue", speaker:"叙述", text:"张文轩把我们安顿好之后，没有立刻去处理那些数据。他先把我们带到了食堂——真正的食堂，有热饭热汤的那种。" },
+      { type:"dialogue", speaker:"叙述", text:"吃饭的时候，他坐在我们对面的长凳上，给自己盛了一碗汤，慢慢地喝。他的动作很慢，不是从容——是累了。一种从骨头里渗出来的疲惫。" },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"张参谋——您多久没休息了？" },
+      { type:"dialogue", speaker:"张文轩", pos:"center", text:"从济南出事的那天开始，到今天——刚好一周。没睡过一个完整的觉。" },
+      { type:"dialogue", speaker:"王冉", pos:"center", text:"那您去休息一下吧，我们这里没事——" },
+      { type:"dialogue", speaker:"张文轩", pos:"center", text:"等我把你们的资料处理完了再说。" },
+      { type:"bg", bg:"bg-military", overlay:"overlay-light" },
+      { type:"dialogue", speaker:"叙述", text:"后来我了解到张文轩的故事。他是菏泽本地人，参军二十二年。老婆孩子在济南——事发那天刚好是周末，他老婆带着孩子去济南的动物园玩。最后一次通话是八月三十号下午。" },
+      { type:"dialogue", speaker:"叙述", text:"他说，电话里他听到了一声巨响，然后信号断了。他拨回去——再也没有拨通过。" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"——您不去找他们？" },
+      { type:"dialogue", speaker:"张文轩", pos:"center", text:"从菏泽到济南——四百公里。我一个人一辆车冲过去，又能改变什么？这里还有几百个活人等着我守。我走了，他们怎么办？" },
+      { type:"dialogue", speaker:"叙述", text:"他说话的时候，眼睛一直看着窗外。我不知道他是在看远方，还是在逃避我的目光。" },
+      { type:"bg", bg:"bg-night" },
+      { type:"dialogue", speaker:"叙述", text:"那天晚上，张文轩把我们叫醒——凌晨两点。他把我们带到了武装部的楼顶。" },
+      { type:"dialogue", speaker:"张文轩", pos:"center", text:"给你们看个东西。" },
+      { type:"dialogue", speaker:"叙述", text:"他指向东方。地平线上，有一道极其微弱的、几乎看不见的绿光。" },
+      { type:"dialogue", speaker:"张文轩", pos:"center", text:"菏泽东边三十公里——有一个雷达站，现在已经被改造成了前哨基地。那边有人。不是我的人——是自发组织起来的幸存者。他们在点篝火。每隔两天点一次，作为信号。" },
+      { type:"dialogue", speaker:"国好", pos:"center", text:"……还有人活着。" },
+      { type:"dialogue", speaker:"张文轩", pos:"center", text:"对。不只是我们。还有很多人在活着，在战斗，在等待。" },
+      { type:"bg", bg:"bg-dawn", overlay:"overlay-light" },
+      { type:"dialogue", speaker:"叙述", text:"第二天早上，张文轩来敲我的门。他的表情跟昨天不一样了——多了一些什么。像是——希望。" },
+      { type:"dialogue", speaker:"张文轩", pos:"center", text:"四川那边的研究所回复了。他们确认了抗体数据匹配——我们发给他们的天元数据和他们的研究数据，百分之九十七的吻合度。" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"这意味着……？" },
+      { type:"dialogue", speaker:"张文轩", pos:"center", text:"这意味着——我们有疫苗了。不是纸上谈兵，是真的可以进入人体实验阶段的疫苗。" },
+      { type:"bg", bg:"bg-military" },
+      { type:"dialogue", speaker:"叙述", text:"张文轩沉默了很久。然后他后退一步，立正，向我们敬了一个标准的军礼。" },
+      { type:"dialogue", speaker:"张文轩", pos:"center", text:"我代表菏泽军分区，代表——所有还活着的人——谢谢你们。" },
+      { type:"dialogue", speaker:"叙述", text:"没有人说话。但我看到了——国好的眼眶红了。王冉低下了头。老周摘下了厨师帽。王文轩站着，什么也没说，但我注意到他的拳头攥得很紧。" },
+      { type:"dialogue", speaker:"叙述", text:"而我——我只是想让所有人都能回家。" },
+      { type:"bg", bg:"bg-epilogue", overlay:"overlay-dark" },
+      { type:"dialogue", speaker:"叙述", text:"临行前的那个晚上，我给杨子琪又打了一个电话。" },
+      { type:"dialogue", speaker:"杨子琪", pos:"center", text:"真的？疫苗？" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"真的。张文轩说，最快一个月之内就能批量生产第一批。" },
+      { type:"dialogue", speaker:"叙述", text:"电话那头沉默了一会儿。然后杨子琪笑了——那是我在末日以来第一次听到他笑。" },
+      { type:"dialogue", speaker:"杨子琪", pos:"center", text:"那我得把学校打扫干净了——等你们回来接我的时候，总不能让你们住猪窝。" },
+      { type:"dialogue", speaker:"{player}", pos:"center", text:"你那边……还有人吗？" },
+      { type:"dialogue", speaker:"杨子琪", pos:"center", text:"还有十七个。我带着他们。还活着。" },
+      { type:"dialogue", speaker:"叙述", text:"十七个。从四十七个到十七个——每一个数字后面都是一条命。但还活着。" },
+      { type:"dialogue", speaker:"叙述", text:"我挂了电话，走出帐篷。菏泽的夜空依然清澈。那道遥远的绿光还在闪烁。远处，基地的士兵正在换岗，脚步声整齐有力。发电机在轰隆隆地响。有人在唱歌——一首老歌，声音沙哑但是坚定。" },
+      { type:"bg", bg:"bg-epilogue" },
       { type:"dialogue", speaker:"系统", text:"—— 全文完 ——" },
       { type:"dialogue", speaker:"系统", text:"黑夜之后，会是新的黎明。" },
+      { type:"dialogue", speaker:"叙述", text:"—— 谨以此故事，纪念每一个在黑暗中守望黎明的人。" },
+      { type:"dialogue", speaker:"叙述", text:"刘欣彤·奔跑者 | 杨子琪·同桌 | 数学老师·最后一课 | 王冉·锁匠的女儿 | 神秘老者·两枚鸡蛋 | 张文轩·军人的责任" },
+      { type:"dialogue", speaker:"叙述", text:"以及——所有在一线战斗过的无名者。" },
     ]
   }
 };
@@ -839,5 +1291,7 @@ const SCENARIOS = {
 // ============================================================
 game.init();
 </script>
+
 </body>
 </html>
+
